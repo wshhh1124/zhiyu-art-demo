@@ -20,6 +20,11 @@ test("drawing surface exposes three media and 36 preset colors", async () => {
   assert.match(page, /水彩/);
   const paletteSource = page.match(/const palette = \[([\s\S]*?)\];/)?.[1] ?? "";
   assert.equal(paletteSource.match(/#[0-9A-F]{6}/g)?.length, 36);
+  assert.match(page, /accept="image\/\*"/);
+  assert.match(page, /拍照 \/ 选择图片/);
+  assert.match(page, /图片仅导入当前画布/);
+  assert.match(page, /URL\.createObjectURL\(file\)/);
+  assert.match(page, /file\.size > 20 \* 1024 \* 1024/);
 });
 
 test("seven-day experience includes gallery, opt-in sharing, pulse feedback and archive", async () => {
