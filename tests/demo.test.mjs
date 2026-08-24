@@ -27,7 +27,12 @@ test("seven-day experience includes gallery, opt-in sharing, pulse feedback and 
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
   assert.equal((experience.match(/day:\s[1-7],/g) ?? []).length, 7);
   assert.match(page, /7日作品册/);
-  assert.match(page, /生成一张自主分享卡/);
+  assert.match(page, /先生成，再决定是否分享/);
+  assert.match(page, /作品＋标题/);
+  assert.match(page, /作品＋一句话/);
+  assert.match(page, /生成卡片预览/);
+  assert.match(page, /作品已经嵌入卡片/);
+  assert.match(page, /drawImageContain\(context, image/);
   assert.match(page, /匿名反馈草稿/);
   assert.match(page, /下载7日个人作品档案/);
   assert.doesNotMatch(page, /请带着三个问题回到伙伴群/);
