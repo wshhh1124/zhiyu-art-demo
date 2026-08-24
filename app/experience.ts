@@ -30,6 +30,28 @@ export type FeedbackDraft = {
   savedAt: string;
 };
 
+export type ParticipantProfile = {
+  id: "profile";
+  participantId: string;
+  startedAt: string;
+};
+
+export type ArtworkDraft = {
+  day: number;
+  image: string;
+  importedArtwork: boolean;
+  updatedAt: string;
+};
+
+export type ExperienceBackup = {
+  version: 1;
+  exportedAt: string;
+  profile: ParticipantProfile | null;
+  days: DayRecord[];
+  feedback: FeedbackDraft[];
+  drafts: ArtworkDraft[];
+};
+
 export const dayPlans: DayPlan[] = [
   {
     day: 1,
@@ -104,7 +126,8 @@ export const dayPlans: DayPlan[] = [
 ];
 
 const DB_NAME = "zhiyu-art-demo";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
+type StoreName = "days" | "feedback" | "profile" | "drafts";
 
 function openDatabase(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -113,13 +136,15 @@ function openDatabase(): Promise<IDBDatabase> {
       const db = request.result;
       if (!db.objectStoreNames.contains("days")) db.createObjectStore("days", { keyPath: "day" });
       if (!db.objectStoreNames.contains("feedback")) db.createObjectStore("feedback", { keyPath: "day" });
+      if (!db.objectStoreNames.contains("profile")) db.createObjectStore("profile", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("drafts")) db.createObjectStore("drafts", { keyPath: "day" });
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () => reject(request.error);
   });
 }
 
-async function writeStore<T>(storeName: "days" | "feedback", value: T) {
+async function writeStore<T>(storeName: StoreName, value: T) {
   const db = await openDatabase();
   return new Promise<void>((resolve, reject) => {
     const transaction = db.transaction(storeName, "readwrite");
@@ -129,7 +154,7 @@ async function writeStore<T>(storeName: "days" | "feedback", value: T) {
   });
 }
 
-async function readStore<T>(storeName: "days" | "feedback"): Promise<T[]> {
+async function readStore<T>(storeName: StoreName): Promise<T[]> {
   const db = await openDatabase();
   return new Promise((resolve, reject) => {
     const transaction = db.transaction(storeName, "readonly");
@@ -139,7 +164,61 @@ async function readStore<T>(storeName: "days" | "feedback"): Promise<T[]> {
   });
 }
 
+async function deleteFromStore(storeName: StoreName, key: IDBValidKey) {
+  const db = await openDatabase();
+  return new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(storeName, "readwrite");
+    transaction.objectStore(storeName).delete(key);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+  });
+}
+
 export const saveDayRecord = (record: DayRecord) => writeStore("days", record);
 export const getDayRecords = () => readStore<DayRecord>("days");
 export const saveFeedbackDraft = (draft: FeedbackDraft) => writeStore("feedback", draft);
 export const getFeedbackDrafts = () => readStore<FeedbackDraft>("feedback");
+export const saveParticipantProfile = (profile: ParticipantProfile) => writeStore("profile", profile);
+export const getParticipantProfile = async () => (await readStore<ParticipantProfile>("profile"))[0] ?? null;
+export const saveArtworkDraft = (draft: ArtworkDraft) => writeStore("drafts", draft);
+export const getArtworkDraft = async (day: number) => (await readStore<ArtworkDraft>("drafts")).find((draft) => draft.day === day) ?? null;
+export const deleteArtworkDraft = (day: number) => deleteFromStore("drafts", day);
+
+export async function createExperienceBackup(): Promise<ExperienceBackup> {
+  const [profile, days, feedback, drafts] = await Promise.all([
+    getParticipantProfile(),
+    getDayRecords(),
+    getFeedbackDrafts(),
+    readStore<ArtworkDraft>("drafts"),
+  ]);
+  return { version: 1, exportedAt: new Date().toISOString(), profile, days, feedback, drafts };
+}
+
+function isValidBackup(value: unknown): value is ExperienceBackup {
+  if (!value || typeof value !== "object") return false;
+  const backup = value as Partial<ExperienceBackup>;
+  return backup.version === 1 && Array.isArray(backup.days) && Array.isArray(backup.feedback) && Array.isArray(backup.drafts)
+    && backup.days.every((record) => Number.isInteger(record?.day) && record.day >= 1 && record.day <= 7 && typeof record.image === "string")
+    && (backup.profile === null || (typeof backup.profile?.participantId === "string" && typeof backup.profile?.startedAt === "string"));
+}
+
+export async function restoreExperienceBackup(raw: string): Promise<ExperienceBackup> {
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { throw new Error("INVALID_BACKUP"); }
+  if (!isValidBackup(parsed)) throw new Error("INVALID_BACKUP");
+  const backup = parsed;
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(["days", "feedback", "profile", "drafts"], "readwrite");
+    const days = transaction.objectStore("days"); const feedback = transaction.objectStore("feedback");
+    const profile = transaction.objectStore("profile"); const drafts = transaction.objectStore("drafts");
+    days.clear(); feedback.clear(); profile.clear(); drafts.clear();
+    backup.days.forEach((record) => days.put(record));
+    backup.feedback.forEach((record) => feedback.put(record));
+    backup.drafts.forEach((record) => drafts.put(record));
+    if (backup.profile) profile.put(backup.profile);
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+  });
+  return backup;
+}

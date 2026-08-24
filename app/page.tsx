@@ -1,7 +1,23 @@
 "use client";
 
 import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
-import { DayRecord, FeedbackDraft, dayPlans, getDayRecords, saveDayRecord, saveFeedbackDraft } from "./experience";
+import {
+  ArtworkDraft,
+  createExperienceBackup,
+  DayRecord,
+  FeedbackDraft,
+  dayPlans,
+  deleteArtworkDraft,
+  getArtworkDraft,
+  getDayRecords,
+  getParticipantProfile,
+  ParticipantProfile,
+  restoreExperienceBackup,
+  saveArtworkDraft,
+  saveDayRecord,
+  saveFeedbackDraft,
+  saveParticipantProfile,
+} from "./experience";
 
 const DEMO_CODE = "260824";
 const palette = [
@@ -35,9 +51,12 @@ const shareOptions = [
 type BrushType = (typeof brushOptions)[number]["id"];
 type Phase = "create" | "reflect" | "result" | "gallery";
 type ShareMode = (typeof shareOptions)[number]["id"];
+type SaveStatus = "idle" | "saving" | "saved" | "failed";
+type UndoSnapshot = { image: ImageData; started: boolean; importedArtwork: boolean; previewUrl: string };
 
 function padDay(day: number) { return String(day).padStart(2, "0"); }
 function downloadDataUrl(url: string, filename: string) { const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); }
+function downloadTextFile(content: string, filename: string) { const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" })); downloadDataUrl(url, filename); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function loadImage(src: string) { return new Promise<HTMLImageElement>((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = src; }); }
 function drawImageContain(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
   const scale = Math.min(width / image.width, height / image.height);
@@ -49,17 +68,35 @@ function wrapText(context: CanvasRenderingContext2D, text: string, x: number, y:
   for (const char of chars) { const test = line + char; if (context.measureText(test).width > maxWidth && line) { context.fillText(line, x, y + lineIndex * lineHeight); line = char; lineIndex += 1; if (lineIndex >= maxLines) return; } else line = test; }
   if (lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
 }
+function localDateKey(value: string | Date) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+function calendarDaysSince(startedAt: string) {
+  const start = new Date(`${localDateKey(startedAt)}T00:00:00`);
+  const today = new Date(`${localDateKey(new Date())}T00:00:00`);
+  return Math.max(0, Math.floor((today.getTime() - start.getTime()) / 86400000));
+}
+function formatLocalTime(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
+  const undoSnapshot = useRef<UndoSnapshot | null>(null);
+  const draftTimer = useRef<number | null>(null);
   const [unlocked, setUnlocked] = useState(false);
   const [code, setCode] = useState("");
+  const [participantIdInput, setParticipantIdInput] = useState("");
+  const [profile, setProfile] = useState<ParticipantProfile | null>(null);
   const [codeError, setCodeError] = useState("");
   const [phase, setPhase] = useState<Phase>("create");
   const [day, setDay] = useState(1);
   const [records, setRecords] = useState<DayRecord[]>([]);
   const [storageNote, setStorageNote] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [undoAvailable, setUndoAvailable] = useState(false);
   const [color, setColor] = useState(palette[0]);
   const [brushType, setBrushType] = useState<BrushType>("pencil");
   const [brush, setBrush] = useState(10);
@@ -85,6 +122,8 @@ export default function Home() {
   const energyText = useMemo(() => ["", "很轻", "偏低", "中等", "在流动", "很充沛"][energy], [energy]);
   const completed = records.length;
   const allComplete = completed === 7;
+  const maxUnlockedDay = profile ? Math.min(7, calendarDaysSince(profile.startedAt) + 1) : 1;
+  const nextIncompleteDay = dayPlans.find((item) => !records.some((record) => record.day === item.day))?.day ?? 7;
   const sortedRecords = useMemo(() => [...records].sort((a, b) => a.day - b.day), [records]);
   const feelingSummary = useMemo(() => {
     const counts = new Map<string, number>(); records.flatMap((record) => record.feelings).forEach((item) => counts.set(item, (counts.get(item) ?? 0) + 1));
@@ -99,23 +138,74 @@ export default function Home() {
     const context = canvas.getContext("2d"); context?.scale(ratio, ratio); if (!context) return;
     context.fillStyle = "#FBF8F3"; context.fillRect(0, 0, rect.width, rect.height); context.lineCap = "round"; context.lineJoin = "round";
     if (previewUrl) loadImage(previewUrl).then((image) => context.drawImage(image, 0, 0, rect.width, rect.height)).catch(() => undefined);
-  }, [unlocked, phase, day]);
+  }, [unlocked, phase, day, previewUrl]);
+
+  useEffect(() => {
+    const hasUnsavedWork = (phase === "create" && started) || phase === "reflect";
+    if (!hasUnsavedWork) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [phase, started]);
+
+  useEffect(() => () => { if (draftTimer.current) window.clearTimeout(draftTimer.current); }, []);
 
   async function unlock(event: React.FormEvent) {
     event.preventDefault(); if (code.trim() !== DEMO_CODE) { setCodeError("体验码不对，再和邀请你的伙伴确认一下。"); return; }
-    setCodeError(""); setUnlocked(true);
-    try { const saved = await getDayRecords(); setRecords(saved); const next = dayPlans.find((item) => !saved.some((record) => record.day === item.day))?.day ?? 7; setDay(next); setPhase(saved.length ? "gallery" : "create"); }
-    catch { setStorageNote("当前浏览器阻止了本地保存；仍可体验和单独下载作品，但无法形成7日作品册。"); }
+    const cleanParticipantId = participantIdInput.trim();
+    if (cleanParticipantId.length < 2) { setCodeError("请输入群内发放的参与编号，至少2个字符。"); return; }
+    setCodeError("");
+    try {
+      const saved = await getDayRecords(); const existingProfile = await getParticipantProfile();
+      if (existingProfile && existingProfile.participantId !== cleanParticipantId) { setCodeError(`这台设备已有编号 ${existingProfile.participantId} 的作品记录。请使用原编号，或在另一浏览器开始新体验。`); return; }
+      const earliestCompletion = [...saved].sort((a, b) => a.completedAt.localeCompare(b.completedAt))[0]?.completedAt;
+      const activeProfile: ParticipantProfile = existingProfile
+        ? existingProfile
+        : { id: "profile", participantId: cleanParticipantId, startedAt: earliestCompletion ?? new Date().toISOString() };
+      await saveParticipantProfile(activeProfile); setProfile(activeProfile); setRecords(saved); setUnlocked(true);
+      const availableDay = Math.min(7, calendarDaysSince(activeProfile.startedAt) + 1);
+      const next = dayPlans.find((item) => item.day <= availableDay && !saved.some((record) => record.day === item.day))?.day;
+      if (saved.length || !next) { setDay(next ?? Math.min(availableDay, 7)); setPhase("gallery"); }
+      else await resetFields(next);
+    }
+    catch { setUnlocked(true); setStorageNote("当前浏览器阻止了本地保存；仍可体验和单独下载作品，但无法形成7日作品册。"); }
   }
   function point(event: PointerEvent<HTMLCanvasElement>) { const rect = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
-  function begin(event: PointerEvent<HTMLCanvasElement>) { const context = canvasRef.current?.getContext("2d"); if (!context) return; drawing.current = true; setStarted(true); event.currentTarget.setPointerCapture(event.pointerId); const current = point(event); context.beginPath(); context.moveTo(current.x, current.y); }
+  function captureUndoSnapshot() {
+    const canvas = canvasRef.current; const context = canvas?.getContext("2d"); if (!canvas || !context) return;
+    undoSnapshot.current = { image: context.getImageData(0, 0, canvas.width, canvas.height), started, importedArtwork, previewUrl };
+    setUndoAvailable(true);
+  }
+  function undoLastChange() {
+    const canvas = canvasRef.current; const context = canvas?.getContext("2d"); const snapshot = undoSnapshot.current;
+    if (!canvas || !context || !snapshot) return;
+    context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.globalAlpha = 1; context.shadowBlur = 0; context.putImageData(snapshot.image, 0, 0); context.restore();
+    setStarted(snapshot.started); setImportedArtwork(snapshot.importedArtwork); setPreviewUrl(snapshot.previewUrl); undoSnapshot.current = null; setUndoAvailable(false); scheduleDraftSave(snapshot.started, snapshot.importedArtwork);
+  }
+  function scheduleDraftSave(shouldSave = true, importedOverride = importedArtwork) {
+    if (draftTimer.current) window.clearTimeout(draftTimer.current);
+    if (!shouldSave) return;
+    draftTimer.current = window.setTimeout(async () => {
+      const canvas = canvasRef.current; if (!canvas) return;
+      const draft: ArtworkDraft = { day, image: canvas.toDataURL("image/jpeg", .82), importedArtwork: importedOverride, updatedAt: new Date().toISOString() };
+      try { await saveArtworkDraft(draft); setStorageNote("当前画面已自动保存为本机草稿。"); }
+      catch { setStorageNote("自动保存草稿失败，请先下载或导出备份保存作品。"); }
+    }, 450);
+  }
+  function begin(event: PointerEvent<HTMLCanvasElement>) { const context = canvasRef.current?.getContext("2d"); if (!context) return; captureUndoSnapshot(); drawing.current = true; setStarted(true); event.currentTarget.setPointerCapture(event.pointerId); const current = point(event); context.beginPath(); context.moveTo(current.x, current.y); }
   function draw(event: PointerEvent<HTMLCanvasElement>) {
     if (!drawing.current) return; const context = canvasRef.current?.getContext("2d"); if (!context) return;
     const current = point(event); const pressure = event.pressure > 0 ? .72 + event.pressure * .28 : 1;
     const style = { pencil: { width: brush * .55, alpha: .72, blur: 0 }, oil: { width: brush * 1.1, alpha: .94, blur: 0 }, watercolor: { width: brush * 1.55, alpha: .18, blur: brush * .42 } }[brushType];
     context.strokeStyle = color; context.lineWidth = style.width * pressure; context.globalAlpha = style.alpha; context.shadowColor = color; context.shadowBlur = style.blur; context.lineTo(current.x, current.y); context.stroke();
   }
-  function clearCanvas() { const canvas = canvasRef.current; const context = canvas?.getContext("2d"); if (!canvas || !context) return; context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.globalAlpha = 1; context.shadowBlur = 0; context.fillStyle = "#FBF8F3"; context.fillRect(0, 0, canvas.width, canvas.height); context.restore(); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); }
+  function endDrawing() { if (!drawing.current) return; drawing.current = false; scheduleDraftSave(true); }
+  function clearCanvas() {
+    const canvas = canvasRef.current; const context = canvas?.getContext("2d"); if (!canvas || !context || (!started && !previewUrl)) return;
+    if (!window.confirm("确定清空当前画面吗？清空后仍可以撤销一次。")) return;
+    captureUndoSnapshot(); context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.globalAlpha = 1; context.shadowBlur = 0; context.fillStyle = "#FBF8F3"; context.fillRect(0, 0, canvas.width, canvas.height); context.restore(); setStarted(false); setImportedArtwork(false); setPreviewUrl("");
+    deleteArtworkDraft(day).catch(() => undefined);
+  }
   async function importArtwork(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (!file) return;
     if (!file.type.startsWith("image/")) { setError("请选择一张图片文件。"); return; }
@@ -124,11 +214,13 @@ export default function Home() {
     try {
       const image = await loadImage(objectUrl); const canvas = canvasRef.current; const context = canvas?.getContext("2d");
       if (!canvas || !context) throw new Error("Canvas unavailable");
+      captureUndoSnapshot();
       const rect = canvas.getBoundingClientRect();
       context.save(); context.setTransform(1, 0, 0, 1, 0, 0); context.globalAlpha = 1; context.shadowBlur = 0; context.fillStyle = "#FBF8F3"; context.fillRect(0, 0, canvas.width, canvas.height); context.restore();
       context.save(); context.globalAlpha = 1; context.shadowBlur = 0; drawImageContain(context, image, 0, 0, rect.width, rect.height); context.restore();
-      setStarted(true); setImportedArtwork(true); setPreviewUrl(""); setError("");
+      setStarted(true); setImportedArtwork(true); setPreviewUrl(canvas.toDataURL("image/jpeg", .86)); setError("");
       setStorageNote("纸上作品已导入当前画布，只在这台设备内处理；你还可以继续使用网页画笔补充。");
+      scheduleDraftSave(true, true);
     } catch { setError("这张图片暂时无法读取，请换一张 JPG、PNG 或相册照片再试。"); }
     finally { URL.revokeObjectURL(objectUrl); }
   }
@@ -143,14 +235,53 @@ export default function Home() {
   async function completeReflection() {
     if (!title.trim()) { setError("先为作品取一个只属于今天的名字。"); return; }
     const record: DayRecord = { day, title: title.trim(), image: previewUrl, feelings, energy, focus, responseMode, note: note.trim(), completedAt: new Date().toISOString() };
-    setError(""); setRecords((current) => [...current.filter((item) => item.day !== day), record]); setPhase("result");
-    try { await saveDayRecord(record); } catch { setStorageNote("这次作品没能写入本地作品册，请先下载作品保留。"); }
+    setError(""); setSaveStatus("saving");
+    try {
+      await saveDayRecord(record); deleteArtworkDraft(day).catch(() => undefined);
+      setRecords((current) => [...current.filter((item) => item.day !== day), record]); setSaveStatus("saved"); setStorageNote(`Day ${padDay(day)} 已确认保存。发送打卡回执后，老师才能记录你的完成情况。`); setPhase("result");
+    } catch { setSaveStatus("failed"); setError("保存失败，作品尚未进入作品册。请重试，或先返回画布下载备份。"); return; }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function resetFields(targetDay: number) { setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setFeedbackOpen(false); setSharePreviewUrl(""); setShareMode("artTitle"); window.scrollTo({ top: 0, behavior: "smooth" }); }
-  function openDay(targetDay: number) { const saved = records.find((record) => record.day === targetDay); if (!saved) { resetFields(targetDay); return; } setDay(saved.day); setTitle(saved.title); setPreviewUrl(saved.image); setFeelings(saved.feelings); setEnergy(saved.energy); setFocus(saved.focus); setResponseMode(saved.responseMode); setNote(saved.note); setSharePreviewUrl(""); setShareMode("artTitle"); setPhase("result"); window.scrollTo({ top: 0, behavior: "smooth" }); }
-  function showGallery() { setPhase("gallery"); setError(""); window.scrollTo({ top: 0, behavior: "smooth" }); }
+  async function resetFields(targetDay: number) {
+    if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有解锁。每天开放一章，请明天再回来。`); return; }
+    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setSaveStatus("idle"); setFeedbackOpen(false); setSharePreviewUrl(""); setShareMode("artTitle"); undoSnapshot.current = null; setUndoAvailable(false);
+    try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
+    catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function openDay(targetDay: number) {
+    const saved = records.find((record) => record.day === targetDay);
+    if (!saved && targetDay > maxUnlockedDay) { setStorageNote(`Day ${padDay(targetDay)} 将在活动第 ${targetDay} 天解锁。`); return; }
+    if (!saved) { void resetFields(targetDay); return; }
+    setDay(saved.day); setTitle(saved.title); setPreviewUrl(saved.image); setFeelings(saved.feelings); setEnergy(saved.energy); setFocus(saved.focus); setResponseMode(saved.responseMode); setNote(saved.note); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveStatus("saved"); setPhase("result"); window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function showGallery() {
+    if (((phase === "create" && started) || phase === "reflect") && !window.confirm("当前内容还没有正式保存。草稿已尽量自动保留，确定先离开吗？")) return;
+    setPhase("gallery"); setError(""); window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   function downloadArtwork() { downloadDataUrl(previewUrl, `Day${day}-${title.trim() || plan.shortTitle}.jpg`); }
+
+  async function shareCheckinReceipt() {
+    const record = records.find((item) => item.day === day); if (!record || !profile) return;
+    const text = `织屿7日打卡回执\n参与编号：${profile.participantId}\nDay ${padDay(day)} · ${plan.shortTitle}\n完成时间：${formatLocalTime(record.completedAt)}\n累计完成：${completed}/7\n作品：未附（由参与者自行决定是否分享）`;
+    if (navigator.share) { try { await navigator.share({ title: `Day ${padDay(day)} 打卡回执`, text }); return; } catch { /* participant cancelled */ } }
+    try { await navigator.clipboard.writeText(text); setStorageNote("打卡回执已复制。请粘贴到活动群或发给老师，作为完成记录。"); }
+    catch { setError("当前浏览器无法复制打卡回执，请截屏完成页发给老师。"); }
+  }
+
+  async function exportBackup() {
+    try { const backup = await createExperienceBackup(); downloadTextFile(JSON.stringify(backup), `织屿7日作品备份-${profile?.participantId || "未编号"}-${localDateKey(new Date())}.json`); setStorageNote("备份已经下载。请保留这个文件；换设备时可在作品册中导入恢复。"); }
+    catch { setError("备份生成失败，请先逐日下载作品图片。"); }
+  }
+  async function importBackup(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (!file) return;
+    if (file.size > 60 * 1024 * 1024) { setError("备份文件超过60MB，暂时无法导入。"); return; }
+    try {
+      const backup = await restoreExperienceBackup(await file.text()); const restoredProfile = backup.profile;
+      setRecords(backup.days); if (restoredProfile) { setProfile(restoredProfile); setParticipantIdInput(restoredProfile.participantId); }
+      setPhase("gallery"); setError(""); setStorageNote(`已恢复 ${backup.days.length} 天作品与本机草稿。`);
+    } catch { setError("这不是有效的织屿作品备份文件，请重新选择之前下载的 JSON 文件。"); }
+  }
 
   async function makeShareCard() {
     setShareGenerating(true); setError("");
@@ -202,8 +333,8 @@ export default function Home() {
   }
   async function shareFeedbackPrivately() {
     if (!hesitation) { setError("先选择一个最接近的卡点，再生成匿名反馈内容。"); return; }
-    const text = `织屿7日体验反馈（不含姓名）\nDay ${day}\n参与感：${engagement}/5\n卡点：${hesitation}\n继续意愿：${continueChoice}${feedbackNote.trim() ? `\n补充：${feedbackNote.trim()}` : ""}`;
-    if (navigator.share) { try { await navigator.share({ title: "织屿匿名体验反馈", text }); return; } catch { /* participant cancelled */ } }
+    const text = `织屿7日体验反馈（不含姓名）\n参与编号：${profile?.participantId || "未填写"}\nDay ${day}\n参与感：${engagement}/5\n卡点：${hesitation}\n继续意愿：${continueChoice}${feedbackNote.trim() ? `\n补充：${feedbackNote.trim()}` : ""}`;
+    if (navigator.share) { try { await navigator.share({ title: "织屿体验反馈", text }); return; } catch { /* participant cancelled */ } }
     try { await navigator.clipboard.writeText(text); setStorageNote("匿名反馈内容已复制，可粘贴到你选择的私聊或匿名问卷；私聊渠道仍可能显示你的账号身份。"); }
     catch { setError("当前浏览器无法复制，请截屏这组反馈后再私下发送。"); }
   }
@@ -216,15 +347,32 @@ export default function Home() {
     downloadDataUrl(canvas.toDataURL("image/png"), "我的7日内在作品档案.png");
   }
 
-  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><form onSubmit={unlock}><label htmlFor="demo-code">输入6位体验码</label><input id="demo-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••" />{codeError && <small role="alert">{codeError}</small>}<button type="submit">进入体验 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>不会上传到织屿。请连续使用同一台设备和同一浏览器；清除浏览器数据会同时清除作品册。请勿填写姓名、诊断史或联系方式。</span></div></section></main>;
+  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={16} value={participantIdInput} onChange={(event) => setParticipantIdInput(event.target.value)} placeholder="例如 ZY08" /><small className="field-help">使用群内发放的编号，不要填写真实姓名。</small><label htmlFor="demo-code">输入6位体验码</label><input id="demo-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))} placeholder="••••••" />{codeError && <small role="alert">{codeError}</small>}<button type="submit">进入体验 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>作品不会自动上传。完成后由你主动发送不含作品的打卡回执，供老师核对进度；请勿填写姓名、诊断史或联系方式。</span></div></section></main>;
 
   return <main className="app-shell">
     <header className="topbar"><button className="brand-mark" onClick={showGallery}>织屿心理</button><div><span>{completed}/7 已完成</span><button onClick={showGallery}>7日作品册</button></div></header>
     {storageNote && <div className="storage-banner">{storageNote}</div>}{error && <div className="error-banner" role="alert">{error}</div>}
-    {phase === "create" && <><section className="intro-card"><div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1>{plan.title}</h1><p>{plan.prompt}</p><div className="starter-note">起笔提示：{plan.starter}</div><div className="time-note"><span>约5分钟</span><span>没有标准答案</span><span>不分析画作</span></div></section><section className="studio" aria-label="绘画工作台"><div className="creation-source"><div><span>选择创作方式</span><strong>{importedArtwork ? "纸上作品已经导入" : "网页直接画，或上传真实手绘"}</strong><small>{importedArtwork ? "可以继续用下面的画笔在照片上补充" : "拍下纸上的画，也可以从手机相册选择"}</small></div><label className={importedArtwork ? "imported" : ""}><input type="file" accept="image/*" onChange={importArtwork} /><span>{importedArtwork ? "更换图片" : "拍照 / 选择图片"}</span></label><p>图片仅导入当前画布，在本机处理，不会上传到织屿。</p></div><div className="canvas-frame"><canvas ref={canvasRef} className="art-canvas" aria-label="用手指或鼠标自由绘画" onPointerDown={begin} onPointerMove={draw} onPointerUp={() => drawing.current = false} onPointerCancel={() => drawing.current = false} />{!started && <div className="canvas-hint" aria-hidden="true"><span />从这里落下第一笔</div>}</div><div className="art-tools"><div className="tool-section"><div className="tool-heading"><span>画材</span><button onClick={clearCanvas}>清空画布</button></div><div className="brush-types" aria-label="选择画材">{brushOptions.map((item) => <button key={item.id} className={brushType === item.id ? "selected" : ""} onClick={() => setBrushType(item.id)} aria-pressed={brushType === item.id}><i className={`brush-stroke ${item.id}`} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>笔触粗细</span><small>{brushSizes.find((item) => item.value === brush)?.label}</small></div><div className="brush-sizes" aria-label="选择笔触粗细">{brushSizes.map((item) => <button key={item.value} className={brush === item.value ? "selected" : ""} onClick={() => setBrush(item.value)} aria-label={`${item.label}笔触`} aria-pressed={brush === item.value}><i style={{ width: Math.max(5, item.value * .62), height: Math.max(5, item.value * .62), background: color }} /><span>{item.label}</span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>色彩 · 36色</span><small>也可以自选</small></div><div className="palette" aria-label="选择画笔颜色">{palette.map((item) => <button key={item} className={`swatch ${color === item ? "selected" : ""}`} style={{ background: item }} aria-label={`选择颜色 ${item}`} onClick={() => setColor(item)} aria-pressed={color === item} />)}<label className="custom-color" aria-label="自选颜色"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><span>＋</span></label></div></div></div></section><section className="next-step"><div><span>{padDay(day)}</span><p>{plan.takeaway}</p></div><button className="primary-button" disabled={!started && !previewUrl} onClick={finishPainting}>完成这幅画 <span>→</span></button></section></>}
-    {phase === "reflect" && <section className="reflection-flow"><button className="back-button" onClick={() => setPhase("create")}>← 回到画布</button><div className="art-preview"><img src={previewUrl} alt="刚刚完成的作品" /></div><div className="section-heading"><span>STEP 02</span><h2>由你来解释这幅画</h2><p>我们不会根据颜色或线条判断你的心理状态。回应只来自你愿意说出的部分。</p></div><label className="field"><span>{plan.reflectionLabel}</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder={plan.titlePlaceholder} /></label><fieldset><legend>此刻更接近哪些感受？<small>最多选3个，也可以不命名</small></legend><div className="choice-cloud">{feelingsList.map((item) => <button type="button" key={item} className={feelings.includes(item) ? "active" : ""} onClick={() => toggleFeeling(item)}>{item}</button>)}</div></fieldset><label className="field range-field"><span>这幅作品现在有多少能量？<strong>{energyText}</strong></span><input type="range" min="1" max="5" value={energy} onChange={(event) => setEnergy(Number(event.target.value))} /><div className="range-labels"><i>很轻</i><i>很充沛</i></div></label><fieldset><legend>你最想让人留意画面里的什么？</legend><div className="choice-cloud">{focusList.map((item) => <button type="button" key={item} className={focus === item ? "active" : ""} onClick={() => setFocus(item)}>{item}</button>)}</div></fieldset><label className="field"><span>如果愿意，再留下一句话<small>只保存在当前设备</small></span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={280} placeholder="我画到这里时，注意到……" /></label><fieldset><legend>今天希望怎样被回应？</legend><div className="response-grid">{responseOptions.map((item) => <button type="button" key={item.id} className={responseMode === item.id ? "active" : ""} onClick={() => setResponseMode(item.id)}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div></fieldset><button className="primary-button" onClick={completeReflection}>保存并看看回应 <span>→</span></button></section>}
-    {phase === "result" && <section className="result-flow"><div className="completion-mark">{padDay(day)}</div><div className="eyebrow">今天的作品完成了</div><h1>《{title}》</h1><div className="art-preview result-art"><img src={previewUrl} alt={title} /></div><div className="mirror-card"><span>即时镜面回应 · 体验版</span><p>{mirrorFeedback()}</p><small>回应只复述你主动提供的信息，不分析颜色、符号或人格。</small></div><div className="local-card"><strong>已经放进本机作品册</strong><p>作品只留在当前设备和浏览器，不会上传。建议同时下载一份到相册。</p><button onClick={downloadArtwork}>下载这幅作品</button></div><div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再保存或分享。微信内也可以直接长按上面的卡片保存。</p><div className="share-output-actions"><a href={sharePreviewUrl} download={`Day${day}-${title.trim() || plan.shortTitle}-分享卡.png`}>保存卡片图片</a><button onClick={shareGeneratedCard}>调用系统分享</button></div></div>}</div>{[1, 4, 7].includes(day) && <div className="feedback-entry"><span>第 {day} 天体验脉冲</span><h2>愿意留下一份体验反馈吗？</h2><p>不评价你的作品，只记录体验是否顺畅。可以仅存本机，也可以生成不含姓名的文字后自行私下发送。</p><button onClick={() => setFeedbackOpen((value) => !value)}>{feedbackOpen ? "暂时收起" : "填写约30秒"}</button></div>}{feedbackOpen && <div className="feedback-form"><label className="field range-field"><span>今天的参与感<strong>{engagement}/5</strong></span><input type="range" min="1" max="5" value={engagement} onChange={(event) => setEngagement(Number(event.target.value))} /></label><fieldset><legend>哪里最容易卡住？</legend><div className="choice-cloud">{["不知道怎么开始", "操作不顺", "问题太难", "不想公开", "没有明显卡点"].map((item) => <button type="button" key={item} className={hesitation === item ? "active" : ""} onClick={() => setHesitation(item)}>{item}</button>)}</div></fieldset><fieldset><legend>你还愿意继续下一天吗？</legend><div className="choice-cloud">{["愿意继续", "需要更短", "暂时不想"].map((item) => <button type="button" key={item} className={continueChoice === item ? "active" : ""} onClick={() => setContinueChoice(item)}>{item}</button>)}</div></fieldset><label className="field"><span>还有一句想告诉设计者的话<small>选填</small></span><textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} maxLength={180} /></label><button className="card-action" onClick={saveFeedback}>只保存到本机</button><button className="card-action secondary-action" onClick={shareFeedbackPrivately}>生成并私下发送</button><small className="identity-note">反馈文字不含姓名；如果用微信私聊发送，对方仍会看到你的账号身份。</small></div>}{day < 7 && <button className="primary-button" onClick={() => resetFields(day + 1)}>进入 Day {padDay(day + 1)} <span>→</span></button>}{day === 7 && allComplete && <button className="primary-button" onClick={downloadArchive}>下载7日个人作品档案 <span>↓</span></button>}<button className="primary-button secondary" onClick={showGallery}>查看7日作品册 <span>▦</span></button></section>}
-    {phase === "gallery" && <section className="gallery-flow"><div className="eyebrow">我的本地作品册</div><h1>七天，不是七份作业</h1><p className="gallery-intro">每一天只留下一个当时的切片。完成度保存在当前设备，不做排名，也不会上传。</p><div className="progress-track"><i style={{ width: `${completed / 7 * 100}%` }} /></div><div className="progress-copy"><span>已完成 {completed} 天</span><span>{allComplete ? "可以收束了" : `还剩 ${7 - completed} 天`}</span></div><div className="gallery-grid">{dayPlans.map((item) => { const record = records.find((saved) => saved.day === item.day); return <button key={item.day} className={record ? "complete" : "pending"} onClick={() => openDay(item.day)}>{record ? <img src={record.image} alt={`Day ${item.day} 作品`} /> : <div className="empty-art"><span>{padDay(item.day)}</span><i /></div>}<span>DAY {padDay(item.day)} · {item.shortTitle}</span><strong>{record ? `《${record.title}》` : "等待你的这一笔"}</strong></button>; })}</div>{allComplete ? <div className="day-seven-summary"><span>DAY 07 · 收束</span><h2>把七幅作品放在一起看看</h2><p>你在七天里记录过的感受词包括：<strong>{feelingSummary.join("、") || "尚未命名"}</strong>。这只是你自述内容的并置，不是心理分析。</p><ul><li>哪一个元素在不同作品里再次出现？</li><li>哪一天的自己最让现在的你意外？</li><li>接下来，你想保留、松开或继续靠近什么？</li></ul><button className="card-action" onClick={downloadArchive}>下载7日个人作品档案</button></div> : <button className="primary-button" onClick={() => resetFields(dayPlans.find((item) => !records.some((record) => record.day === item.day))?.day ?? 1)}>继续下一幅作品 <span>→</span></button>}</section>}
+    {phase === "create" && <><section className="intro-card"><div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1>{plan.title}</h1><p>{plan.prompt}</p><div className="starter-note">起笔提示：{plan.starter}</div><div className="time-note"><span>约5分钟</span><span>没有标准答案</span><span>不分析画作</span></div></section><section className="studio" aria-label="绘画工作台"><div className="creation-source"><div><span>选择创作方式</span><strong>{importedArtwork ? "纸上作品已经导入" : "网页直接画，或上传真实手绘"}</strong><small>{importedArtwork ? "可以继续用下面的画笔在照片上补充" : "拍下纸上的画，也可以从手机相册选择"}</small></div><label className={importedArtwork ? "imported" : ""}><input type="file" accept="image/*" onChange={importArtwork} /><span>{importedArtwork ? "更换图片" : "拍照 / 选择图片"}</span></label><p>图片仅导入当前画布，在本机处理，不会上传到织屿。</p></div><div className="canvas-frame"><canvas ref={canvasRef} className="art-canvas" aria-label="用手指或鼠标自由绘画" onPointerDown={begin} onPointerMove={draw} onPointerUp={endDrawing} onPointerCancel={endDrawing} />{!started && <div className="canvas-hint" aria-hidden="true"><span />从这里落下第一笔</div>}</div><div className="art-tools"><div className="tool-section"><div className="tool-heading"><span>画材</span><div className="canvas-history"><button disabled={!undoAvailable} onClick={undoLastChange}>撤销一步</button><button onClick={clearCanvas}>清空画布</button></div></div><div className="brush-types" aria-label="选择画材">{brushOptions.map((item) => <button key={item.id} className={brushType === item.id ? "selected" : ""} onClick={() => setBrushType(item.id)} aria-pressed={brushType === item.id}><i className={`brush-stroke ${item.id}`} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>笔触粗细</span><small>{brushSizes.find((item) => item.value === brush)?.label}</small></div><div className="brush-sizes" aria-label="选择笔触粗细">{brushSizes.map((item) => <button key={item.value} className={brush === item.value ? "selected" : ""} onClick={() => setBrush(item.value)} aria-label={`${item.label}笔触`} aria-pressed={brush === item.value}><i style={{ width: Math.max(5, item.value * .62), height: Math.max(5, item.value * .62), background: color }} /><span>{item.label}</span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>色彩 · 36色</span><small>也可以自选</small></div><div className="palette" aria-label="选择画笔颜色">{palette.map((item) => <button key={item} className={`swatch ${color === item ? "selected" : ""}`} style={{ background: item }} aria-label={`选择颜色 ${item}`} onClick={() => setColor(item)} aria-pressed={color === item} />)}<label className="custom-color" aria-label="自选颜色"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><span>＋</span></label></div></div></div></section><section className="next-step"><div><span>{padDay(day)}</span><p>{plan.takeaway}</p></div><button className="primary-button" disabled={!started && !previewUrl} onClick={finishPainting}>完成这幅画 <span>→</span></button></section></>}
+    {phase === "reflect" && <section className="reflection-flow"><button className="back-button" onClick={() => setPhase("create")}>← 回到画布</button><div className="art-preview"><img src={previewUrl} alt="刚刚完成的作品" /></div><div className="section-heading"><span>STEP 02</span><h2>由你来解释这幅画</h2><p>我们不会根据颜色或线条判断你的心理状态。回应只来自你愿意说出的部分。</p></div><label className="field"><span>{plan.reflectionLabel}</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder={plan.titlePlaceholder} /></label><fieldset><legend>此刻更接近哪些感受？<small>最多选3个，也可以不命名</small></legend><div className="choice-cloud">{feelingsList.map((item) => <button type="button" key={item} className={feelings.includes(item) ? "active" : ""} onClick={() => toggleFeeling(item)}>{item}</button>)}</div></fieldset><label className="field range-field"><span>这幅作品现在有多少能量？<strong>{energyText}</strong></span><input type="range" min="1" max="5" value={energy} onChange={(event) => setEnergy(Number(event.target.value))} /><div className="range-labels"><i>很轻</i><i>很充沛</i></div></label><fieldset><legend>你最想让人留意画面里的什么？</legend><div className="choice-cloud">{focusList.map((item) => <button type="button" key={item} className={focus === item ? "active" : ""} onClick={() => setFocus(item)}>{item}</button>)}</div></fieldset><label className="field"><span>如果愿意，再留下一句话<small>只保存在当前设备</small></span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={280} placeholder="我画到这里时，注意到……" /></label><fieldset><legend>今天希望怎样被回应？</legend><div className="response-grid">{responseOptions.map((item) => <button type="button" key={item.id} className={responseMode === item.id ? "active" : ""} onClick={() => setResponseMode(item.id)}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div></fieldset><button className="primary-button" disabled={saveStatus === "saving"} onClick={completeReflection}>{saveStatus === "saving" ? "正在保存到本机作品册……" : saveStatus === "failed" ? "重新保存" : "保存并看看回应"} <span>→</span></button></section>}
+    {phase === "result" && <section className="result-flow">
+      <div className="completion-mark">{padDay(day)}</div><div className="eyebrow">今天的作品完成了</div><h1>《{title}》</h1>
+      <div className="art-preview result-art"><img src={previewUrl} alt={title} /></div>
+      <div className="mirror-card"><span>即时镜面回应 · 体验版</span><p>{mirrorFeedback()}</p><small>回应只复述你主动提供的信息，不分析颜色、符号或人格。</small></div>
+      <div className={`local-card ${saveStatus}`}><strong>{saveStatus === "saved" ? "已确认保存到本机作品册" : "正在确认保存状态"}</strong><p>{saveStatus === "saved" ? "作品已写入当前设备和浏览器。建议同时下载作品或导出完整备份。" : "只有本机数据库确认写入后，才会显示保存成功。"}</p><div className="local-actions"><button onClick={downloadArtwork}>下载这幅作品</button><button className="outline" onClick={shareCheckinReceipt}>发送打卡回执</button></div><small>回执只含参与编号、完成时间和天数，不包含作品与感受。</small></div>
+      <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再保存或分享。微信内也可以直接长按上面的卡片保存。</p><div className="share-output-actions"><a href={sharePreviewUrl} download={`Day${day}-${title.trim() || plan.shortTitle}-分享卡.png`}>保存卡片图片</a><button onClick={shareGeneratedCard}>调用系统分享</button></div></div>}</div>
+      {[1, 4, 7].includes(day) && <div className="feedback-entry"><span>第 {day} 天体验脉冲</span><h2>愿意留下一份体验反馈吗？</h2><p>不评价你的作品，只记录体验是否顺畅。可以仅存本机，也可以生成不含姓名的文字后自行私下发送。</p><button onClick={() => setFeedbackOpen((value) => !value)}>{feedbackOpen ? "暂时收起" : "填写约30秒"}</button></div>}
+      {feedbackOpen && <div className="feedback-form"><label className="field range-field"><span>今天的参与感<strong>{engagement}/5</strong></span><input type="range" min="1" max="5" value={engagement} onChange={(event) => setEngagement(Number(event.target.value))} /></label><fieldset><legend>哪里最容易卡住？</legend><div className="choice-cloud">{["不知道怎么开始", "操作不顺", "问题太难", "不想公开", "没有明显卡点"].map((item) => <button type="button" key={item} className={hesitation === item ? "active" : ""} onClick={() => setHesitation(item)}>{item}</button>)}</div></fieldset><fieldset><legend>你还愿意继续下一天吗？</legend><div className="choice-cloud">{["愿意继续", "需要更短", "暂时不想"].map((item) => <button type="button" key={item} className={continueChoice === item ? "active" : ""} onClick={() => setContinueChoice(item)}>{item}</button>)}</div></fieldset><label className="field"><span>还有一句想告诉设计者的话<small>选填</small></span><textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} maxLength={180} /></label><button className="card-action" onClick={saveFeedback}>只保存到本机</button><button className="card-action secondary-action" onClick={shareFeedbackPrivately}>生成并私下发送</button><small className="identity-note">反馈文字不含姓名；如果用微信私聊发送，对方仍会看到你的账号身份。</small></div>}
+      {day < 7 && (day + 1 <= maxUnlockedDay ? <button className="primary-button" onClick={() => openDay(day + 1)}>{records.some((record) => record.day === day + 1) ? "查看" : "进入"} Day {padDay(day + 1)} <span>→</span></button> : <div className="locked-next"><strong>Day {padDay(day + 1)} 明天解锁</strong><span>每天只开放一章。今天的打卡回执发送后，就可以先休息了。</span></div>)}
+      {day === 7 && allComplete && <button className="primary-button" onClick={downloadArchive}>下载7日个人作品档案 <span>↓</span></button>}
+      <button className="primary-button secondary" onClick={showGallery}>查看7日作品册 <span>▦</span></button>
+    </section>}
+    {phase === "gallery" && <section className="gallery-flow">
+      <div className="eyebrow">参与编号 {profile?.participantId} · 活动第 {maxUnlockedDay} 天</div><h1>七天，不是七份作业</h1><p className="gallery-intro">每一天只留下一个当时的切片。未来章节按天开放；作品不自动上传，由你决定分享范围。</p>
+      <div className="progress-track"><i style={{ width: `${completed / 7 * 100}%` }} /></div><div className="progress-copy"><span>已完成 {completed} 天</span><span>{allComplete ? "可以收束了" : `还剩 ${7 - completed} 天`}</span></div>
+      <div className="gallery-grid">{dayPlans.map((item) => { const record = records.find((saved) => saved.day === item.day); const locked = !record && item.day > maxUnlockedDay; return <button key={item.day} disabled={locked} className={record ? "complete" : locked ? "locked" : "pending"} onClick={() => openDay(item.day)}>{record ? <img src={record.image} alt={`Day ${item.day} 作品`} /> : <div className="empty-art"><span>{locked ? "锁" : padDay(item.day)}</span><i /></div>}<span>DAY {padDay(item.day)} · {item.shortTitle}</span><strong>{record ? `《${record.title}》` : locked ? `第 ${item.day} 天开放` : "等待你的这一笔"}</strong></button>; })}</div>
+      <div className="backup-card"><span>跨设备备份</span><h2>把当前进度保存成一个文件</h2><p>备份包含作品、觉察记录、完成时间和未完成草稿。请妥善保管，不要转发给无关的人。</p><div className="backup-actions"><button onClick={exportBackup}>下载当前备份</button><label><input type="file" accept="application/json,.json" onChange={importBackup} />导入备份恢复</label></div></div>
+      {allComplete ? <div className="day-seven-summary"><span>DAY 07 · 收束</span><h2>把七幅作品放在一起看看</h2><p>你在七天里记录过的感受词包括：<strong>{feelingSummary.join("、") || "尚未命名"}</strong>。这只是你自述内容的并置，不是心理分析。</p><ul><li>哪一个元素在不同作品里再次出现？</li><li>哪一天的自己最让现在的你意外？</li><li>接下来，你想保留、松开或继续靠近什么？</li></ul><button className="card-action" onClick={downloadArchive}>下载7日个人作品档案</button></div> : nextIncompleteDay <= maxUnlockedDay ? <button className="primary-button" onClick={() => resetFields(nextIncompleteDay)}>继续 Day {padDay(nextIncompleteDay)} <span>→</span></button> : <div className="locked-next"><strong>今天的章节已经完成</strong><span>下一章会在明天开放。你可以先下载备份，或回看已完成的作品。</span></div>}
+    </section>}
     <footer><span>表达性艺术探索 · 不是心理咨询或治疗</span><span>© 织屿心理</span></footer>
   </main>;
 }

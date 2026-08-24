@@ -42,3 +42,23 @@ test("seven-day experience includes gallery, opt-in sharing, pulse feedback and 
   assert.match(page, /下载7日个人作品档案/);
   assert.doesNotMatch(page, /请带着三个问题回到伙伴群/);
 });
+
+test("pilot flow protects work and produces teacher-verifiable receipts", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const experience = await readFile(new URL("app/experience.ts", root), "utf8");
+  assert.match(page, /参与编号/);
+  assert.match(page, /发送打卡回执/);
+  assert.match(page, /完成时间：/);
+  assert.match(page, /回执只含参与编号、完成时间和天数/);
+  assert.match(page, /撤销一步/);
+  assert.match(page, /确定清空当前画面吗/);
+  assert.match(page, /beforeunload/);
+  assert.match(page, /正在保存到本机作品册/);
+  assert.match(page, /Day \{padDay\(day \+ 1\)\} 明天解锁/);
+  assert.match(page, /下载当前备份/);
+  assert.match(page, /导入备份恢复/);
+  assert.match(experience, /const DB_VERSION = 2/);
+  assert.match(experience, /createExperienceBackup/);
+  assert.match(experience, /restoreExperienceBackup/);
+  assert.match(experience, /saveArtworkDraft/);
+});
