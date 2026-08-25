@@ -43,6 +43,21 @@ test("seven-day experience includes gallery, opt-in sharing, pulse feedback and 
   assert.doesNotMatch(page, /请带着三个问题回到伙伴群/);
 });
 
+test("all seven days include psychoeducation, participant choice and grounding", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const experience = await readFile(new URL("app/experience.ts", root), "utf8");
+  assert.equal((experience.match(/^    practiceAim:/gm) ?? []).length, 7);
+  assert.equal((experience.match(/^    context:/gm) ?? []).length, 7);
+  assert.equal((experience.match(/^    prepare:/gm) ?? []).length, 7);
+  assert.equal((experience.match(/^    permission:/gm) ?? []).length, 7);
+  assert.equal((experience.match(/^    closing:/gm) ?? []).length, 7);
+  assert.match(page, /先了解这7天会发生什么/);
+  assert.match(page, /任何一天都可以暂停、跳过或不公开作品/);
+  assert.match(page, /如果此刻有点难受，先暂停一下/);
+  assert.match(page, /联系可信任的人或合适的专业支持/);
+  assert.match(page, /先把今天放回生活/);
+});
+
 test("pilot flow protects work and produces teacher-verifiable receipts", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
