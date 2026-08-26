@@ -45,6 +45,19 @@ test("seven-day experience includes gallery, opt-in sharing, pulse feedback and 
   assert.doesNotMatch(page, /请带着三个问题回到伙伴群/);
 });
 
+test("artwork and share card open as long-pressable images instead of file previews", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(page, /长按保存作品/);
+  assert.match(page, /长按保存卡片/);
+  assert.match(page, /长按下面的图片/);
+  assert.match(page, /role="dialog"/);
+  assert.match(page, /saveImagePreview\.url/);
+  assert.doesNotMatch(page, /<a href=\{sharePreviewUrl\} download=/);
+  assert.match(styles, /\.image-save-layer/);
+  assert.match(styles, /-webkit-touch-callout:default/);
+});
+
 test("all seven days include psychoeducation, participant choice and grounding", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");

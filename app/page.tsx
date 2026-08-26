@@ -54,6 +54,7 @@ type Phase = "create" | "reflect" | "result" | "gallery";
 type ShareMode = (typeof shareOptions)[number]["id"];
 type SaveStatus = "idle" | "saving" | "saved" | "failed";
 type UndoSnapshot = { image: ImageData; started: boolean; importedArtwork: boolean; previewUrl: string };
+type SaveImagePreview = { url: string; label: string } | null;
 
 function padDay(day: number) { return String(day).padStart(2, "0"); }
 function downloadDataUrl(url: string, filename: string) { const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); }
@@ -114,6 +115,7 @@ export default function Home() {
   const [shareMode, setShareMode] = useState<ShareMode>("artTitle");
   const [sharePreviewUrl, setSharePreviewUrl] = useState("");
   const [shareGenerating, setShareGenerating] = useState(false);
+  const [saveImagePreview, setSaveImagePreview] = useState<SaveImagePreview>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [engagement, setEngagement] = useState(4);
   const [hesitation, setHesitation] = useState("");
@@ -148,6 +150,13 @@ export default function Home() {
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
   }, [phase, started]);
+
+  useEffect(() => {
+    if (!saveImagePreview) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, [saveImagePreview]);
 
   useEffect(() => () => { if (draftTimer.current) window.clearTimeout(draftTimer.current); }, []);
 
@@ -246,7 +255,7 @@ export default function Home() {
   }
   async function resetFields(targetDay: number) {
     if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有解锁。每天开放一章，请明天再回来。`); return; }
-    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setSaveStatus("idle"); setFeedbackOpen(false); setSharePreviewUrl(""); setShareMode("artTitle"); undoSnapshot.current = null; setUndoAvailable(false);
+    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setSaveStatus("idle"); setFeedbackOpen(false); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
     try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
     catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -255,13 +264,16 @@ export default function Home() {
     const saved = records.find((record) => record.day === targetDay);
     if (!saved && targetDay > maxUnlockedDay) { setStorageNote(`Day ${padDay(targetDay)} 将在活动第 ${targetDay} 天解锁。`); return; }
     if (!saved) { void resetFields(targetDay); return; }
-    setDay(saved.day); setTitle(saved.title); setPreviewUrl(saved.image); setFeelings(saved.feelings); setEnergy(saved.energy); setFocus(saved.focus); setResponseMode(saved.responseMode); setNote(saved.note); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveStatus("saved"); setPhase("result"); window.scrollTo({ top: 0, behavior: "smooth" });
+    setDay(saved.day); setTitle(saved.title); setPreviewUrl(saved.image); setFeelings(saved.feelings); setEnergy(saved.energy); setFocus(saved.focus); setResponseMode(saved.responseMode); setNote(saved.note); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveImagePreview(null); setSaveStatus("saved"); setPhase("result"); window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function showGallery() {
     if (((phase === "create" && started) || phase === "reflect") && !window.confirm("当前内容还没有正式保存。草稿已尽量自动保留，确定先离开吗？")) return;
     setPhase("gallery"); setError(""); window.scrollTo({ top: 0, behavior: "smooth" });
   }
-  function downloadArtwork() { downloadDataUrl(previewUrl, `Day${day}-${title.trim() || plan.shortTitle}.jpg`); }
+  function openImageSavePreview(url: string, label: string) {
+    if (!url) return;
+    setSaveImagePreview({ url, label });
+  }
 
   async function shareCheckinReceipt() {
     const record = records.find((item) => item.day === day); if (!record || !profile) return;
@@ -326,7 +338,7 @@ export default function Home() {
     if (!sharePreviewUrl) return;
     const blob = await (await fetch(sharePreviewUrl)).blob(); const file = new File([blob], `Day${day}-${title.trim() || plan.shortTitle}-分享卡.png`, { type: "image/png" });
     if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) { try { await navigator.share({ files: [file], title: `Day ${day} · ${plan.shortTitle}` }); return; } catch { return; } }
-    setStorageNote("当前浏览器不能直接调用系统分享。请在卡片预览上长按保存，或点击“保存卡片图片”。");
+    setStorageNote("当前浏览器不能直接调用系统分享。请点击“长按保存卡片”，再长按弹出的图片保存到相册。");
   }
   async function saveFeedback() {
     if (!hesitation) { setError("请选择一个最接近的卡点，也可以选择“没有明显卡点”。"); return; }
@@ -361,8 +373,8 @@ export default function Home() {
       <div className="art-preview result-art"><img src={previewUrl} alt={title} /></div>
       <div className="mirror-card"><span>即时镜面回应 · 体验版</span><p>{mirrorFeedback()}</p><small>回应只复述你主动提供的信息，不分析颜色、符号或人格。</small></div>
       <div className="closing-card"><span>先把今天放回生活</span><p>{plan.closing}</p></div>
-      <div className={`local-card ${saveStatus}`}><strong>{saveStatus === "saved" ? "已确认保存到本机作品册" : "正在确认保存状态"}</strong><p>{saveStatus === "saved" ? "作品已写入当前设备和浏览器。建议同时下载作品或导出完整备份。" : "只有本机数据库确认写入后，才会显示保存成功。"}</p><div className="local-actions"><button onClick={downloadArtwork}>下载这幅作品</button><button className="outline" onClick={shareCheckinReceipt}>发送打卡回执</button></div><small>回执只含参与编号、完成时间和天数，不包含作品与感受。</small></div>
-      <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再保存或分享。微信内也可以直接长按上面的卡片保存。</p><div className="share-output-actions"><a href={sharePreviewUrl} download={`Day${day}-${title.trim() || plan.shortTitle}-分享卡.png`}>保存卡片图片</a><button onClick={shareGeneratedCard}>调用系统分享</button></div></div>}</div>
+      <div className={`local-card ${saveStatus}`}><strong>{saveStatus === "saved" ? "已确认保存到本机作品册" : "正在确认保存状态"}</strong><p>{saveStatus === "saved" ? "作品已写入当前设备和浏览器。建议同时保存作品原图或导出完整备份。" : "只有本机数据库确认写入后，才会显示保存成功。"}</p><div className="local-actions"><button onClick={() => openImageSavePreview(previewUrl, "作品原图")}>长按保存作品</button><button className="outline" onClick={shareCheckinReceipt}>发送打卡回执</button></div><small>长按保存会显示纯图片，不再跳到文件预览器；回执只含参与编号、完成时间和天数，不包含作品与感受。</small></div>
+      <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再保存或分享。点击保存后会在网页内显示纯图片。</p><div className="share-output-actions"><button onClick={() => openImageSavePreview(sharePreviewUrl, "分享卡")}>长按保存卡片</button><button onClick={shareGeneratedCard}>调用系统分享</button></div></div>}</div>
       {[1, 4, 7].includes(day) && <div className="feedback-entry"><span>第 {day} 天体验脉冲</span><h2>愿意留下一份体验反馈吗？</h2><p>不评价你的作品，只记录体验是否顺畅。可以仅存本机，也可以生成不含姓名的文字后自行私下发送。</p><button onClick={() => setFeedbackOpen((value) => !value)}>{feedbackOpen ? "暂时收起" : "填写约30秒"}</button></div>}
       {feedbackOpen && <div className="feedback-form"><label className="field range-field"><span>今天的参与感<strong>{engagement}/5</strong></span><input type="range" min="1" max="5" value={engagement} onChange={(event) => setEngagement(Number(event.target.value))} /></label><fieldset><legend>哪里最容易卡住？</legend><div className="choice-cloud">{["不知道怎么开始", "操作不顺", "问题太难", "不想公开", "没有明显卡点"].map((item) => <button type="button" key={item} className={hesitation === item ? "active" : ""} onClick={() => setHesitation(item)}>{item}</button>)}</div></fieldset><fieldset><legend>你还愿意继续下一天吗？</legend><div className="choice-cloud">{["愿意继续", "需要更短", "暂时不想"].map((item) => <button type="button" key={item} className={continueChoice === item ? "active" : ""} onClick={() => setContinueChoice(item)}>{item}</button>)}</div></fieldset><label className="field"><span>还有一句想告诉设计者的话<small>选填</small></span><textarea value={feedbackNote} onChange={(event) => setFeedbackNote(event.target.value)} maxLength={180} /></label><button className="card-action" onClick={saveFeedback}>只保存到本机</button><button className="card-action secondary-action" onClick={shareFeedbackPrivately}>生成并私下发送</button><small className="identity-note">反馈文字不含姓名；如果用微信私聊发送，对方仍会看到你的账号身份。</small></div>}
       {day < 7 && (day + 1 <= maxUnlockedDay ? <button className="primary-button" onClick={() => openDay(day + 1)}>{records.some((record) => record.day === day + 1) ? "查看" : "进入"} Day {padDay(day + 1)} <span>→</span></button> : <div className="locked-next"><strong>Day {padDay(day + 1)} 明天解锁</strong><span>每天只开放一章。今天的打卡回执发送后，就可以先休息了。</span></div>)}
@@ -376,6 +388,15 @@ export default function Home() {
       <div className="backup-card"><span>跨设备备份</span><h2>把当前进度保存成一个文件</h2><p>备份包含作品、觉察记录、完成时间和未完成草稿。请妥善保管，不要转发给无关的人。</p><div className="backup-actions"><button onClick={exportBackup}>下载当前备份</button><label><input type="file" accept="application/json,.json" onChange={importBackup} />导入备份恢复</label></div></div>
       {allComplete ? <div className="day-seven-summary"><span>DAY 07 · 收束</span><h2>把七幅作品放在一起看看</h2><p>你在七天里记录过的感受词包括：<strong>{feelingSummary.join("、") || "尚未命名"}</strong>。这只是你自述内容的并置，不是心理分析。</p><ul><li>哪一个元素在不同作品里再次出现？</li><li>哪一天的自己最让现在的你意外？</li><li>接下来，你想保留、松开或继续靠近什么？</li></ul><button className="card-action" onClick={downloadArchive}>下载7日个人作品档案</button></div> : nextIncompleteDay <= maxUnlockedDay ? <button className="primary-button" onClick={() => resetFields(nextIncompleteDay)}>继续 Day {padDay(nextIncompleteDay)} <span>→</span></button> : <div className="locked-next"><strong>今天的章节已经完成</strong><span>下一章会在明天开放。你可以先下载备份，或回看已完成的作品。</span></div>}
     </section>}
+    {saveImagePreview && <div className="image-save-layer" role="dialog" aria-modal="true" aria-label={`保存${saveImagePreview.label}`} onClick={() => setSaveImagePreview(null)}>
+      <div className="image-save-dialog" onClick={(event) => event.stopPropagation()}>
+        <div className="image-save-heading"><div><span>保存到系统相册</span><strong>长按下面的图片</strong></div><button type="button" aria-label="关闭保存图片窗口" onClick={() => setSaveImagePreview(null)}>×</button></div>
+        <p>在微信中长按图片，选择“保存图片”。如果没有出现菜单，请点右上角“…”并选择“在默认浏览器打开”，然后再长按。</p>
+        <img src={saveImagePreview.url} alt={`${saveImagePreview.label}，长按保存到相册`} />
+        <small>这是一张网页中的纯图片，不会自动上传，也不会自动发送给任何人。</small>
+        <button type="button" className="image-save-close" onClick={() => setSaveImagePreview(null)}>我已保存 / 关闭</button>
+      </div>
+    </div>}
     <footer><span>表达性艺术探索 · 不是心理咨询或治疗</span><span>© 织屿心理</span></footer>
   </main>;
 }
