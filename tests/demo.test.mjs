@@ -13,11 +13,13 @@ test("partner demo is gated and keeps participant content device-local", async (
   assert.doesNotMatch(page, /回应工作台/);
 });
 
-test("drawing surface exposes three media and 36 preset colors", async () => {
+test("drawing surface exposes three media, an eraser and 36 preset colors", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   assert.match(page, /铅笔/);
   assert.match(page, /油画/);
   assert.match(page, /水彩/);
+  assert.match(page, /橡皮擦/);
+  assert.match(page, /brushType === "eraser" \? "#FBF8F3" : color/);
   const paletteSource = page.match(/const palette = \[([\s\S]*?)\];/)?.[1] ?? "";
   assert.equal(paletteSource.match(/#[0-9A-F]{6}/g)?.length, 36);
   assert.match(page, /accept="image\/\*"/);
