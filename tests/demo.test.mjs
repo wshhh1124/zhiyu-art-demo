@@ -6,11 +6,14 @@ const root = new URL("../", import.meta.url);
 
 test("partner demo is gated and keeps participant content device-local", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
-  assert.match(page, /const DEMO_CODE = "260824"/);
+  const backend = await readFile(new URL("app/cloudBackend.ts", root), "utf8");
+  assert.match(page, /joinWithParticipantCode/);
+  assert.match(page, /验证编号并进入/);
   assert.match(page, /作品只保存在当前设备/);
   assert.match(page, /不会上传到织屿/);
   assert.doesNotMatch(page, /fetch\("\/api\/submissions/);
   assert.doesNotMatch(page, /回应工作台/);
+  assert.match(backend, /participant\.join/);
 });
 
 test("drawing surface exposes three media, an eraser and 36 preset colors", async () => {
@@ -79,16 +82,32 @@ test("pilot flow protects work and produces teacher-verifiable receipts", async 
   assert.match(page, /参与编号/);
   assert.match(page, /发送打卡回执/);
   assert.match(page, /完成时间：/);
-  assert.match(page, /回执只含参与编号、完成时间和天数/);
+  assert.match(page, /完成记录已同步给老师/);
+  assert.match(page, /syncParticipantCompletion/);
+  assert.match(page, /云端只记录编号、天数和完成时间/);
   assert.match(page, /撤销一步/);
   assert.match(page, /确定清空当前画面吗/);
   assert.match(page, /beforeunload/);
   assert.match(page, /正在保存到本机作品册/);
-  assert.match(page, /Day \{padDay\(day \+ 1\)\} 明天解锁/);
+  assert.match(page, /Day \{padDay\(day \+ 1\)\} 等待老师开放/);
   assert.match(page, /下载当前备份/);
   assert.match(page, /导入备份恢复/);
   assert.match(experience, /const DB_VERSION = 2/);
   assert.match(experience, /createExperienceBackup/);
   assert.match(experience, /restoreExperienceBackup/);
   assert.match(experience, /saveArtworkDraft/);
+});
+
+test("teacher backend controls participant codes, open day and completion metadata", async () => {
+  const dashboard = await readFile(new URL("app/TeacherDashboard.tsx", root), "utf8");
+  const api = await readFile(new URL("cloudfunctions/zhiyu-api/index.js", root), "utf8");
+  assert.match(dashboard, /全员开放到哪一天/);
+  assert.match(dashboard, /批量生成/);
+  assert.match(dashboard, /单独开放/);
+  assert.match(dashboard, /暂停/);
+  assert.match(api, /process\.env\.ADMIN_PASSWORD/);
+  assert.match(api, /PARTICIPANT_NOT_FOUND/);
+  assert.match(api, /DAY_LOCKED/);
+  assert.match(api, /completedDays/);
+  assert.doesNotMatch(api, /image|feelings|note/);
 });

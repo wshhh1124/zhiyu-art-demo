@@ -1,0 +1,18 @@
+{
+  "version": "2.1",
+  "envId": "cloud1-5gbfrdn5944358bc",
+  "functionRoot": "./cloudfunctions",
+  "functions": [
+    {
+      "name": "zhiyu-api",
+      "dir": "./cloudfunctions/zhiyu-api",
+      "type": "HTTP",
+      "runtime": "Nodejs20.19",
+      "memorySize": 256,
+      "timeout": 10,
+      "installDependency": true,
+      "public": true,
+      "gatewayPath": "/zhiyu-api"
+    }
+  ]
+}
