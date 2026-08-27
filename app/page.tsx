@@ -3,6 +3,7 @@
 import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArtworkDraft,
+  clearExperienceData,
   createExperienceBackup,
   DayRecord,
   FeedbackDraft,
@@ -90,6 +91,7 @@ export default function Home() {
   const [participantIdInput, setParticipantIdInput] = useState("");
   const [profile, setProfile] = useState<ParticipantProfile | null>(null);
   const [codeError, setCodeError] = useState("");
+  const [switchCode, setSwitchCode] = useState("");
   const [cloudMaxDay, setCloudMaxDay] = useState(1);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>("idle");
   const [phase, setPhase] = useState<Phase>("create");
@@ -167,11 +169,11 @@ export default function Home() {
     event.preventDefault();
     const cleanParticipantId = participantIdInput.trim();
     if (cleanParticipantId.length < 3) { setCodeError("请输入老师单独发给你的参与编号。"); return; }
-    setCodeError("");
+    setCodeError(""); setSwitchCode("");
     try {
       const access = await joinWithParticipantCode(cleanParticipantId);
       const saved = await getDayRecords(); const existingProfile = await getParticipantProfile();
-      if (existingProfile && existingProfile.participantId !== access.code) { setCodeError(`这台设备已有编号 ${existingProfile.participantId} 的作品记录。请使用原编号，或在另一浏览器开始新体验。`); return; }
+      if (existingProfile && existingProfile.participantId !== access.code) { setSwitchCode(access.code); setCodeError(`这台设备保存着旧编号 ${existingProfile.participantId} 的本机记录。你可以先下载备份，再清除旧记录并改用 ${access.code}。`); return; }
       const earliestCompletion = [...saved].sort((a, b) => a.completedAt.localeCompare(b.completedAt))[0]?.completedAt;
       const activeProfile: ParticipantProfile = existingProfile
         ? existingProfile
@@ -183,6 +185,24 @@ export default function Home() {
       else await resetFields(next);
     }
     catch (caught) { setCodeError(caught instanceof Error ? caught.message : "暂时无法验证参与编号，请稍后重试。"); }
+  }
+  async function clearLocalAndSwitch(downloadBackup: boolean) {
+    if (!switchCode) return;
+    const confirmed = window.confirm(`将永久清除这台设备上旧编号的作品、草稿和反馈，然后改用 ${switchCode}。${downloadBackup ? "网页会先下载一份备份。" : "清除后无法恢复。"}确定继续吗？`);
+    if (!confirmed) return;
+    setCodeError("");
+    try {
+      if (downloadBackup) {
+        const backup = await createExperienceBackup();
+        downloadTextFile(JSON.stringify(backup), `织屿旧记录备份-${localDateKey(new Date())}.json`);
+      }
+      const access = await joinWithParticipantCode(switchCode);
+      await clearExperienceData();
+      const activeProfile: ParticipantProfile = { id: "profile", participantId: access.code, startedAt: access.joinedAt ?? new Date().toISOString() };
+      await saveParticipantProfile(activeProfile);
+      setProfile(activeProfile); setRecords([]); setCloudMaxDay(access.currentDay); setParticipantIdInput(access.code); setSwitchCode(""); setUnlocked(true); setStorageNote("旧记录已从这台设备清除，已经切换到新的参与编号。");
+      await resetFields(1);
+    } catch (caught) { setCodeError(caught instanceof Error ? caught.message : "清除或更换编号失败，请稍后重试。"); }
   }
   async function refreshCloudAccess() {
     if (!profile) return;
@@ -378,7 +398,7 @@ export default function Home() {
   }
 
   if (teacherMode) return <TeacherDashboard />;
-  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>老师会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>这是一项心理教育与自我探索活动，不提供诊断或治疗。任何一天都可以暂停、跳过或不公开作品。</small></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => setParticipantIdInput(event.target.value.toUpperCase())} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入老师单独发给你的编号，不要填写真实姓名。</small>{codeError && <small role="alert">{codeError}</small>}<button type="submit">验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台只记录参与编号、开放进度和完成时间，不上传你的作品、感受词或觉察文字。</span></div></section></main>;
+  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>老师会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>这是一项心理教育与自我探索活动，不提供诊断或治疗。任何一天都可以暂停、跳过或不公开作品。</small></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => { setParticipantIdInput(event.target.value.toUpperCase()); setSwitchCode(""); setCodeError(""); }} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入老师单独发给你的编号，不要填写真实姓名。</small>{codeError && <small role="alert">{codeError}</small>}{switchCode && <div className="switch-code-actions"><button type="button" className="outline" onClick={() => clearLocalAndSwitch(true)}>先备份，再更换编号</button><button type="button" className="danger" onClick={() => clearLocalAndSwitch(false)}>直接清除旧记录并更换</button></div>}<button type="submit">验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台只记录参与编号、开放进度和完成时间，不上传你的作品、感受词或觉察文字。</span></div></section></main>;
 
   return <main className="app-shell">
     <header className="topbar"><button className="brand-mark" onClick={showGallery}>织屿心理</button><div><span>{completed}/7 已完成 · 开放至 Day {maxUnlockedDay}</span><button onClick={refreshCloudAccess}>刷新开放</button><button onClick={showGallery}>7日作品册</button></div></header>

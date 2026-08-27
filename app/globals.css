@@ -27,6 +27,10 @@ button { -webkit-tap-highlight-color:transparent; }
 .gate-card form small { color:#9a4d43; font-size:11px; }
 .gate-card form small.field-help { margin:-3px 0 7px; color:var(--muted); line-height:1.5; }
 .gate-card form button,.primary-button { width:100%; display:flex; align-items:center; justify-content:space-between; margin-top:5px; border:0; border-radius:14px; padding:16px 18px; background:var(--ink); color:white; font-weight:700; cursor:pointer; }
+.switch-code-actions { display:grid; grid-template-columns:1fr; gap:8px; margin:5px 0 2px; padding:11px; border:1px solid rgba(154,77,67,.2); border-radius:14px; background:rgba(154,77,67,.06); }
+.gate-card form .switch-code-actions button { justify-content:center; margin:0; padding:12px; font-size:11px; letter-spacing:0; }
+.gate-card form .switch-code-actions button.outline { border:1px solid var(--line); background:white; color:var(--teal); }
+.gate-card form .switch-code-actions button.danger { background:#9a4d43; color:white; }
 .privacy-note { display:grid; gap:4px; margin-top:22px; border-radius:15px; padding:14px; background:rgba(119,166,161,.12); }
 .privacy-note strong { font-size:11px; }
 .privacy-note span { color:var(--muted); font-size:10px; line-height:1.6; }
@@ -260,6 +264,11 @@ footer { display:flex; justify-content:space-between; gap:12px; margin-top:42px;
 .teacher-created button { border:1px solid var(--teal); padding:7px 10px; background:transparent; color:var(--teal); font-size:9px; }
 .teacher-created pre { max-height:200px; overflow:auto; margin:12px 0 0; white-space:pre-wrap; color:var(--teal); font:600 13px/1.7 ui-monospace,monospace; }
 .teacher-table-wrap { overflow:auto; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.5); }
+.teacher-list-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.teacher-list-tools>input { width:min(100%,240px); border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:white; color:var(--ink); outline:none; }
+.teacher-list-tools>div { display:flex; flex-wrap:wrap; gap:6px; }
+.teacher-list-tools button { border:1px solid var(--line); border-radius:999px; padding:8px 11px; background:white; color:var(--muted); font-size:9px; cursor:pointer; }
+.teacher-list-tools button.active { border-color:var(--teal); background:var(--teal); color:white; }
 .teacher-table-wrap table { width:100%; min-width:820px; border-collapse:collapse; }
 .teacher-table-wrap th,.teacher-table-wrap td { border-bottom:1px solid var(--line); padding:11px 12px; color:var(--muted); font-size:10px; text-align:left; vertical-align:middle; }
 .teacher-table-wrap th { background:rgba(119,166,161,.09); color:var(--teal); font-weight:700; }
@@ -272,9 +281,12 @@ footer { display:flex; justify-content:space-between; gap:12px; margin-top:42px;
 .teacher-table-wrap td button { padding:7px 10px; font-size:9px; }
 .teacher-table-wrap td button.danger { border:1px solid #9a5a51; background:transparent; color:#8f4037; }
 .teacher-table-wrap td button.restore { background:var(--teal); color:white; }
+.teacher-row-actions { display:flex; align-items:center; gap:6px; }
+.teacher-table-wrap td button.reset { border:1px solid var(--line); background:white; color:var(--muted); }
+.teacher-privacy-tip { margin:12px 0 0; color:var(--muted); font-size:9px; line-height:1.6; }
 .teacher-empty { border:1px dashed var(--line); border-radius:14px; padding:28px; color:var(--muted); font-size:11px; text-align:center; }
 .teacher-footer { margin-top:24px; }
 .teacher-footer a { color:var(--teal); }
-@media (max-width:520px) { .topbar { align-items:flex-start; } .topbar>div { flex-wrap:wrap; justify-content:flex-end; } .topbar>div>span { width:100%; text-align:right; } .response-grid { grid-template-columns:1fr; } .palette { gap:7px; } .brush-types { grid-template-columns:repeat(2,1fr); } .brush-types button { grid-template-columns:34px 1fr; } .brush-types button small { display:block; } .share-options { grid-template-columns:1fr; } .share-options button { display:grid; grid-template-columns:100px 1fr; gap:8px; align-items:center; } .share-options button small { margin:0; } .share-output-heading { align-items:flex-start; flex-direction:column; gap:3px; } .creation-source { grid-template-columns:1fr; } .creation-source>label { display:grid; place-items:center; min-height:42px; } .local-actions,.backup-actions,.guide-grid { grid-template-columns:1fr; } }
+@media (max-width:520px) { .topbar { align-items:flex-start; } .topbar>div { flex-wrap:wrap; justify-content:flex-end; } .topbar>div>span { width:100%; text-align:right; } .response-grid { grid-template-columns:1fr; } .palette { gap:7px; } .brush-types { grid-template-columns:repeat(2,1fr); } .brush-types button { grid-template-columns:34px 1fr; } .brush-types button small { display:block; } .share-options { grid-template-columns:1fr; } .share-options button { display:grid; grid-template-columns:100px 1fr; gap:8px; align-items:center; } .share-options button small { margin:0; } .share-output-heading { align-items:flex-start; flex-direction:column; gap:3px; } .creation-source { grid-template-columns:1fr; } .creation-source>label { display:grid; place-items:center; min-height:42px; } .local-actions,.backup-actions,.guide-grid { grid-template-columns:1fr; } .teacher-list-tools { align-items:stretch; flex-direction:column; } .teacher-list-tools>input { width:100%; } }
 @media (max-width:760px) { .teacher-shell { padding:20px 14px 44px; } .teacher-header { align-items:flex-start; flex-direction:column; } .teacher-metrics { grid-template-columns:1fr 1fr; } .teacher-day-buttons { grid-template-columns:repeat(4,1fr); } .teacher-create-grid { grid-template-columns:1fr; } .teacher-create-grid form { align-items:stretch; flex-direction:column; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; } }

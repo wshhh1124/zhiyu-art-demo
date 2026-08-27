@@ -56,3 +56,4 @@ export const setTeacherCurrentDay = (adminPassword: string, currentDay: number) 
 export const generateParticipantCodes = (adminPassword: string, prefix: string, count: number) => request<TeacherOverview>("admin.generate", { adminPassword, prefix, count });
 export const addParticipantCode = (adminPassword: string, participantCode: string) => request<TeacherOverview>("admin.addCode", { adminPassword, participantCode });
 export const updateTeacherParticipant = (adminPassword: string, participantCode: string, update: { status?: "active" | "inactive"; dayOverride?: number | null }) => request<TeacherOverview>("admin.updateParticipant", { adminPassword, participantCode, ...update });
+export const resetTeacherParticipant = (adminPassword: string, participantCode: string) => request<TeacherOverview>("admin.resetParticipant", { adminPassword, participantCode });

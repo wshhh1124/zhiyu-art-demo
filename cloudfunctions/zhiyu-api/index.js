@@ -150,6 +150,17 @@ async function adminUpdateParticipant(body) {
   await db.collection(PARTICIPANTS).doc(code).update(update);
   return adminOverview(body);
 }
+async function adminResetParticipant(body) {
+  requireAdmin(body);
+  const code = normalizeCode(body.participantCode);
+  const participant = await readParticipant(code);
+  if (!participant) throw Object.assign(new Error("参与编号不存在。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
+  await Promise.all([
+    db.collection(CHECKINS).where({ participantCode: code }).remove(),
+    db.collection(PARTICIPANTS).doc(code).update({ completedDays: [], joinedAt: null, lastSeenAt: null, latestCompletionAt: null, dayOverride: null, updatedAt: now() }),
+  ]);
+  return adminOverview(body);
+}
 
 const actions = {
   "participant.join": joinParticipant,
@@ -160,6 +171,7 @@ const actions = {
   "admin.generate": adminGenerate,
   "admin.addCode": adminAddCode,
   "admin.updateParticipant": adminUpdateParticipant,
+  "admin.resetParticipant": adminResetParticipant,
 };
 
 function corsHeaders(req) {

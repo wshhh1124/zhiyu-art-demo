@@ -224,6 +224,19 @@ export const saveArtworkDraft = (draft: ArtworkDraft) => writeStore("drafts", dr
 export const getArtworkDraft = async (day: number) => (await readStore<ArtworkDraft>("drafts")).find((draft) => draft.day === day) ?? null;
 export const deleteArtworkDraft = (day: number) => deleteFromStore("drafts", day);
 
+export async function clearExperienceData() {
+  const db = await openDatabase();
+  await new Promise<void>((resolve, reject) => {
+    const transaction = db.transaction(["days", "feedback", "profile", "drafts"], "readwrite");
+    transaction.objectStore("days").clear();
+    transaction.objectStore("feedback").clear();
+    transaction.objectStore("profile").clear();
+    transaction.objectStore("drafts").clear();
+    transaction.oncomplete = () => { db.close(); resolve(); };
+    transaction.onerror = () => { db.close(); reject(transaction.error); };
+  });
+}
+
 export async function createExperienceBackup(): Promise<ExperienceBackup> {
   const [profile, days, feedback, drafts] = await Promise.all([
     getParticipantProfile(),

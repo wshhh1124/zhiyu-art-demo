@@ -10,6 +10,8 @@ test("partner demo is gated and keeps participant content device-local", async (
   assert.match(page, /joinWithParticipantCode/);
   assert.match(page, /验证编号并进入/);
   assert.match(page, /作品只保存在当前设备/);
+  assert.match(page, /直接清除旧记录并更换/);
+  assert.match(page, /clearExperienceData/);
   assert.match(page, /不会上传到织屿/);
   assert.doesNotMatch(page, /fetch\("\/api\/submissions/);
   assert.doesNotMatch(page, /回应工作台/);
@@ -105,9 +107,13 @@ test("teacher backend controls participant codes, open day and completion metada
   assert.match(dashboard, /批量生成/);
   assert.match(dashboard, /单独开放/);
   assert.match(dashboard, /暂停/);
+  assert.match(dashboard, /查看并控制所有参与编号/);
+  assert.match(dashboard, /已加入/);
+  assert.match(dashboard, /清空记录/);
   assert.match(api, /process\.env\.ADMIN_PASSWORD/);
   assert.match(api, /PARTICIPANT_NOT_FOUND/);
   assert.match(api, /DAY_LOCKED/);
   assert.match(api, /completedDays/);
+  assert.match(api, /admin\.resetParticipant/);
   assert.doesNotMatch(api, /image|feelings|note/);
 });

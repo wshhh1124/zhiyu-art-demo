@@ -5,6 +5,7 @@ import {
   addParticipantCode,
   generateParticipantCodes,
   getTeacherOverview,
+  resetTeacherParticipant,
   setTeacherCurrentDay,
   TeacherOverview,
   updateTeacherParticipant,
@@ -25,9 +26,22 @@ export default function TeacherDashboard() {
   const [count, setCount] = useState(10);
   const [customCode, setCustomCode] = useState("");
   const [createdCodes, setCreatedCodes] = useState<string[]>([]);
+  const [participantFilter, setParticipantFilter] = useState<"all" | "joined" | "unused" | "inactive">("all");
+  const [participantQuery, setParticipantQuery] = useState("");
   const activeCount = useMemo(() => overview?.participants.filter((item) => item.status === "active").length ?? 0, [overview]);
   const joinedCount = useMemo(() => overview?.participants.filter((item) => item.joinedAt).length ?? 0, [overview]);
   const fullAttendance = useMemo(() => overview?.participants.filter((item) => item.completedDays.length === 7).length ?? 0, [overview]);
+  const visibleParticipants = useMemo(() => {
+    const query = participantQuery.trim().toUpperCase();
+    return (overview?.participants ?? []).filter((item) => {
+      const matchesQuery = !query || item.code.includes(query);
+      const matchesFilter = participantFilter === "all"
+        || (participantFilter === "joined" && Boolean(item.joinedAt))
+        || (participantFilter === "unused" && !item.joinedAt && item.status === "active")
+        || (participantFilter === "inactive" && item.status === "inactive");
+      return matchesQuery && matchesFilter;
+    });
+  }, [overview, participantFilter, participantQuery]);
 
   useEffect(() => {
     const saved = window.sessionStorage.getItem("zhiyu-teacher-password");
@@ -59,6 +73,10 @@ export default function TeacherDashboard() {
   async function changeParticipant(code: string, update: { status?: "active" | "inactive"; dayOverride?: number | null }) {
     await run(() => updateTeacherParticipant(password, code, update), (result) => { setOverview(result); setNotice(`${code} 已更新。`); });
   }
+  async function resetParticipant(code: string) {
+    if (!window.confirm(`确定清空 ${code} 的云端加入时间、完成进度和个人开放设置吗？这不会删除对方手机里的作品。`)) return;
+    await run(() => resetTeacherParticipant(password, code), (result) => { setOverview(result); setNotice(`${code} 的云端使用记录已清空，可以重新开始。`); });
+  }
   async function copyCodes() {
     if (!createdCodes.length) return;
     try { await navigator.clipboard.writeText(createdCodes.join("\n")); setNotice("新编号已复制，可以逐个发给参与者。") }
@@ -74,7 +92,7 @@ export default function TeacherDashboard() {
     <section className="teacher-metrics"><div><span>有效编号</span><strong>{activeCount}</strong></div><div><span>已经加入</span><strong>{joinedCount}</strong></div><div><span>七天全勤</span><strong>{fullAttendance}</strong></div><div><span>当前开放</span><strong>Day {overview.campaign.currentDay}</strong></div></section>
     <section className="teacher-panel"><div className="teacher-panel-heading"><div><span>开放控制</span><h2>全员开放到哪一天</h2></div><small>参与者刷新网页后生效</small></div><div className="teacher-day-buttons">{[1,2,3,4,5,6,7].map((day) => <button key={day} className={overview.campaign.currentDay === day ? "active" : ""} disabled={loading} onClick={() => changeDay(day)}>Day {day}</button>)}</div><p>调整为更早的天数不会删除已经完成的作品；给个人设置过“单独开放”的编号不受全员设置影响。</p></section>
     <section className="teacher-panel"><div className="teacher-panel-heading"><div><span>编号管理</span><h2>生成新参与编号</h2></div><small>建议一人一个编号</small></div><div className="teacher-create-grid"><form onSubmit={generate}><label>编号前缀<input value={prefix} onChange={(event) => setPrefix(event.target.value.toUpperCase())} maxLength={8} /></label><label>生成数量<input type="number" min="1" max="50" value={count} onChange={(event) => setCount(Number(event.target.value))} /></label><button disabled={loading}>批量生成</button></form><form onSubmit={addCustom}><label>添加指定编号<input value={customCode} onChange={(event) => setCustomCode(event.target.value.toUpperCase())} placeholder="例如 ZY-TEST01" maxLength={24} /></label><button disabled={loading || customCode.trim().length < 3}>添加编号</button></form></div>{createdCodes.length > 0 && <div className="teacher-created"><div><strong>本次新编号</strong><button onClick={copyCodes}>复制全部</button></div><pre>{createdCodes.join("\n")}</pre></div>}</section>
-    <section className="teacher-panel teacher-participant-panel"><div className="teacher-panel-heading"><div><span>参与进度</span><h2>所有参与者</h2></div><small>{overview.participants.length} 个编号</small></div>{overview.participants.length === 0 ? <div className="teacher-empty">还没有参与编号，先在上方生成一批。</div> : <div className="teacher-table-wrap"><table><thead><tr><th>编号</th><th>状态</th><th>完成</th><th>最后活动</th><th>单独开放</th><th>操作</th></tr></thead><tbody>{overview.participants.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.joinedAt ? "已加入" : "未使用"}</small></td><td><i className={item.status}>{item.status === "active" ? "有效" : "已暂停"}</i></td><td><b>{item.completedDays.length}/7</b><small>{item.completedDays.length ? `Day ${item.completedDays.join("、")}` : "尚未完成"}</small></td><td>{formatTime(item.lastSeenAt)}</td><td><select value={item.dayOverride ?? ""} onChange={(event) => changeParticipant(item.code, { dayOverride: event.target.value ? Number(event.target.value) : null })}><option value="">跟随全员</option>{[1,2,3,4,5,6,7].map((day) => <option key={day} value={day}>开放到 Day {day}</option>)}</select></td><td><button className={item.status === "active" ? "danger" : "restore"} onClick={() => changeParticipant(item.code, { status: item.status === "active" ? "inactive" : "active" })}>{item.status === "active" ? "暂停" : "恢复"}</button></td></tr>)}</tbody></table></div>}</section>
+    <section className="teacher-panel teacher-participant-panel"><div className="teacher-panel-heading"><div><span>参与者总名单</span><h2>查看并控制所有参与编号</h2></div><small>{overview.participants.length} 个编号 · 当前显示 {visibleParticipants.length} 个</small></div><div className="teacher-list-tools"><input value={participantQuery} onChange={(event) => setParticipantQuery(event.target.value.toUpperCase())} placeholder="搜索参与编号" /><div>{([['all','全部'],['joined','已加入'],['unused','未使用'],['inactive','已暂停']] as const).map(([value, label]) => <button key={value} className={participantFilter === value ? "active" : ""} onClick={() => setParticipantFilter(value)}>{label}</button>)}</div></div>{overview.participants.length === 0 ? <div className="teacher-empty">还没有参与编号，先在上方生成一批。</div> : visibleParticipants.length === 0 ? <div className="teacher-empty">没有符合当前筛选条件的参与者。</div> : <div className="teacher-table-wrap"><table><thead><tr><th>编号</th><th>参与状态</th><th>完成进度</th><th>最后活动</th><th>开放控制</th><th>管理</th></tr></thead><tbody>{visibleParticipants.map((item) => <tr key={item.code}><td><strong>{item.code}</strong><small>{item.joinedAt ? `加入：${formatTime(item.joinedAt)}` : "尚未使用"}</small></td><td><i className={item.status}>{item.status === "active" ? "允许参与" : "已暂停"}</i></td><td><b>{item.completedDays.length}/7</b><small>{item.completedDays.length ? `Day ${item.completedDays.join("、")}` : "尚未完成"}</small></td><td>{formatTime(item.lastSeenAt)}</td><td><select value={item.dayOverride ?? ""} onChange={(event) => changeParticipant(item.code, { dayOverride: event.target.value ? Number(event.target.value) : null })}><option value="">跟随全员</option>{[1,2,3,4,5,6,7].map((day) => <option key={day} value={day}>开放到 Day {day}</option>)}</select></td><td><div className="teacher-row-actions"><button className={item.status === "active" ? "danger" : "restore"} onClick={() => changeParticipant(item.code, { status: item.status === "active" ? "inactive" : "active" })}>{item.status === "active" ? "暂停参与" : "恢复参与"}</button><button className="reset" onClick={() => resetParticipant(item.code)}>清空记录</button></div></td></tr>)}</tbody></table></div>}<p className="teacher-privacy-tip">老师端可查看编号、加入时间、完成天数和最后活动时间；作品、感受词和觉察文字仍只保存在参与者自己的设备中。</p></section>
     <footer className="teacher-footer"><span>后台不收集参与者作品和觉察内容</span><a href="./">返回参与者端</a></footer>
   </main>;
 }
