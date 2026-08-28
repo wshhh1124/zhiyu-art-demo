@@ -50,12 +50,28 @@ const shareOptions = [
 ] as const;
 
 type BrushType = (typeof brushOptions)[number]["id"];
-type Phase = "create" | "reflect" | "result" | "gallery";
+type PracticePhase = "intro" | "ground" | "guide" | "create" | "reflect";
+type Phase = PracticePhase | "result" | "gallery";
 type ShareMode = (typeof shareOptions)[number]["id"];
 type SaveStatus = "idle" | "saving" | "saved" | "failed";
 type CloudSyncStatus = "idle" | "syncing" | "synced" | "failed";
 type UndoSnapshot = { image: ImageData; started: boolean; importedArtwork: boolean; previewUrl: string };
 type SaveImagePreview = { url: string; label: string } | null;
+
+const taskSteps: { id: PracticePhase; label: string }[] = [
+  { id: "intro", label: "介绍" },
+  { id: "ground", label: "呼吸" },
+  { id: "guide", label: "引导" },
+  { id: "create", label: "作画" },
+  { id: "reflect", label: "赋义" },
+];
+
+function JourneyProgress({ current }: { current: PracticePhase }) {
+  const currentIndex = taskSteps.findIndex((item) => item.id === current);
+  return <nav className="journey-progress" aria-label="今日练习进度">
+    {taskSteps.map((item, index) => <span key={item.id} className={index === currentIndex ? "current" : index < currentIndex ? "complete" : ""}><i>{index < currentIndex ? "✓" : index + 1}</i><em>{item.label}</em></span>)}
+  </nav>;
+}
 
 function padDay(day: number) { return String(day).padStart(2, "0"); }
 function downloadDataUrl(url: string, filename: string) { const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); }
@@ -89,7 +105,7 @@ export default function Home() {
   const [cloudMaxDay, setCloudMaxDay] = useState(1);
   const [cloudCompletedDays, setCloudCompletedDays] = useState<number[]>([]);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>("idle");
-  const [phase, setPhase] = useState<Phase>("create");
+  const [phase, setPhase] = useState<Phase>("intro");
   const [day, setDay] = useState(1);
   const [records, setRecords] = useState<DayRecord[]>([]);
   const [storageNote, setStorageNote] = useState("");
@@ -278,6 +294,10 @@ export default function Home() {
     } catch { setError("这张图片暂时无法读取，请换一张 JPG、PNG 或相册照片再试。"); }
     finally { URL.revokeObjectURL(objectUrl); }
   }
+  function leaveCanvasForGuide() {
+    if (started && canvasRef.current) setPreviewUrl(canvasRef.current.toDataURL("image/jpeg", .86));
+    setPhase("guide"); window.scrollTo({ top: 0, behavior: "smooth" });
+  }
   function finishPainting() { setPreviewUrl(canvasRef.current?.toDataURL("image/jpeg", .86) ?? ""); setPhase("reflect"); window.scrollTo({ top: 0, behavior: "smooth" }); }
   function toggleFeeling(item: string) { setFeelings((current) => current.includes(item) ? current.filter((value) => value !== item) : current.length < 3 ? [...current, item] : current); }
   function mirrorFeedback() {
@@ -299,7 +319,7 @@ export default function Home() {
   }
   async function resetFields(targetDay: number) {
     if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有由老师开放。开放后刷新网页即可进入。`); return; }
-    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setEnergyChosen(false); setFocus("色彩"); setFocusChosen(false); setResponseMode("seen"); setResponseChosen(false); setNote(""); setError(""); setSaveStatus("idle"); setCloudSyncStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
+    setDay(targetDay); setPhase("intro"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setEnergyChosen(false); setFocus("色彩"); setFocusChosen(false); setResponseMode("seen"); setResponseChosen(false); setNote(""); setError(""); setSaveStatus("idle"); setCloudSyncStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
     try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
     catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -399,7 +419,34 @@ export default function Home() {
   return <main className="app-shell">
     <header className="topbar"><button className="brand-mark" onClick={showGallery}>织屿心理</button><div><span>{completed}/7 已完成 · 开放至 Day {maxUnlockedDay}</span><button onClick={refreshCloudAccess}>刷新开放</button><button onClick={showGallery}>7日作品册</button></div></header>
     {storageNote && <div className="storage-banner">{storageNote}</div>}{error && <div className="error-banner" role="alert">{error}</div>}
-    {phase === "create" && <><section className="intro-card"><div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1>{plan.title}</h1><p>{plan.prompt}</p><div className="starter-note">起笔提示：{plan.starter}</div><div className="time-note"><span>约5–8分钟</span><span>没有标准答案</span><span>不分析画作</span></div></section><section className="practice-guide" aria-label="今日练习说明"><span>今天我们在练习</span><h2>{plan.practiceAim}</h2><p>{plan.context}</p><div className="guide-grid"><div><strong>开始前</strong><p>{plan.prepare}</p></div><div><strong>你的选择权</strong><p>{plan.permission}</p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p>睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。</p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section><section className="studio" aria-label="绘画工作台"><div className="creation-source"><div><span>选择创作方式</span><strong>{importedArtwork ? "纸上作品已经导入" : "网页直接画，或上传真实手绘"}</strong><small>{importedArtwork ? "可以继续用下面的画笔在照片上补充" : "拍下纸上的画，也可以从手机相册选择"}</small></div><label className={importedArtwork ? "imported" : ""}><input type="file" accept="image/*" onChange={importArtwork} /><span>{importedArtwork ? "更换图片" : "拍照 / 选择图片"}</span></label><p>图片仅导入当前画布，在本机处理，不会上传到织屿。</p></div><div className="canvas-frame"><canvas ref={canvasRef} className="art-canvas" aria-label="用手指或鼠标自由绘画" onPointerDown={begin} onPointerMove={draw} onPointerUp={endDrawing} onPointerCancel={endDrawing} />{!started && <div className="canvas-hint" aria-hidden="true"><span />从这里落下第一笔</div>}</div><div className="art-tools"><div className="tool-section"><div className="tool-heading"><span>画材</span><div className="canvas-history"><button disabled={!undoAvailable} onClick={undoLastChange}>撤销一步</button><button onClick={clearCanvas}>清空画布</button></div></div><div className="brush-types" aria-label="选择画材">{brushOptions.map((item) => <button key={item.id} className={brushType === item.id ? "selected" : ""} onClick={() => setBrushType(item.id)} aria-pressed={brushType === item.id}><i className={`brush-stroke ${item.id}`} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>笔触粗细</span><small>{brushSizes.find((item) => item.value === brush)?.label}</small></div><div className="brush-sizes" aria-label="选择笔触粗细">{brushSizes.map((item) => <button key={item.value} className={brush === item.value ? "selected" : ""} onClick={() => setBrush(item.value)} aria-label={`${item.label}笔触`} aria-pressed={brush === item.value}><i style={{ width: Math.max(5, item.value * .62), height: Math.max(5, item.value * .62), background: brushType === "eraser" ? "#FBF8F3" : color }} /><span>{item.label}</span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>色彩 · 36色</span><small>{brushType === "eraser" ? "切换颜色会继续保留橡皮擦" : "也可以自选"}</small></div><div className="palette" aria-label="选择画笔颜色">{palette.map((item) => <button key={item} className={`swatch ${color === item ? "selected" : ""}`} style={{ background: item }} aria-label={`选择颜色 ${item}`} onClick={() => setColor(item)} aria-pressed={color === item} />)}<label className="custom-color" aria-label="自选颜色"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><span>＋</span></label></div></div></div></section><section className="next-step"><div><span>{padDay(day)}</span><p>{plan.takeaway}</p></div><button className="primary-button" disabled={!started && !previewUrl} onClick={finishPainting}>完成这幅画 <span>→</span></button></section></>}
+    {phase === "intro" && <section className="task-page intro-card">
+      <JourneyProgress current="intro" />
+      <button className="back-button" onClick={showGallery}>← 返回作品册</button>
+      <div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1>{plan.title}</h1><p>{plan.prompt}</p>
+      <div className="time-note"><span>约5–8分钟</span><span>一次只做一步</span><span>随时可以返回</span></div>
+      <button className="primary-button" onClick={() => setPhase("ground")}>开始今天的探索 <span>→</span></button>
+    </section>}
+    {phase === "ground" && <section className="task-page grounding-page">
+      <JourneyProgress current="ground" />
+      <button className="back-button" onClick={() => setPhase("intro")}>← 上一步：介绍</button>
+      <div className="section-heading"><span>STEP 02 · 呼吸 / 到场</span><h2>先给自己一点抵达这里的时间</h2><p>不需要闭眼，也不必强迫自己深呼吸。选择一个舒服的姿势，让目光停在面前真实存在的事物上。</p></div>
+      <div className="breath-practice"><div className="breath-orbit" aria-hidden="true"><i /></div><ol><li><strong>吸气</strong><span>自然吸气，轻轻数到 4</span></li><li><strong>呼气</strong><span>慢慢呼气，轻轻数到 6</span></li><li><strong>重复</strong><span>做 3 轮，或者保持你原本的呼吸</span></li></ol></div>
+      <div className="grounding-permission"><strong>以舒服为准</strong><p>如果数拍让你紧张、头晕或不舒服，请立刻回到自然呼吸。你也可以跳过这一步。</p></div>
+      <button className="primary-button" onClick={() => setPhase("guide")}>我准备好了 <span>→</span></button>
+    </section>}
+    {phase === "guide" && <section className="task-page guide-page">
+      <JourneyProgress current="guide" />
+      <button className="back-button" onClick={() => setPhase("ground")}>← 上一步：呼吸</button>
+      <section className="practice-guide" aria-label="今日练习说明"><span>今天我们在练习</span><h2>{plan.practiceAim}</h2><p>{plan.context}</p><div className="starter-note">起笔提示：{plan.starter}</div><div className="guide-grid"><div><strong>开始前</strong><p>{plan.prepare}</p></div><div><strong>你的选择权</strong><p>{plan.permission}</p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p>睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。</p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section>
+      <button className="primary-button" onClick={() => setPhase("create")}>带着引导去作画 <span>→</span></button>
+    </section>}
+    {phase === "create" && <section className="task-page creation-page">
+      <JourneyProgress current="create" />
+      <button className="back-button" onClick={leaveCanvasForGuide}>← 上一步：引导</button>
+      <div className="section-heading compact"><span>STEP 04 · 作画</span><h2>把注意交给颜色和线条</h2><p>{plan.starter}</p></div>
+      <section className="studio" aria-label="绘画工作台"><div className="creation-source"><div><span>选择创作方式</span><strong>{importedArtwork ? "纸上作品已经导入" : "网页直接画，或上传真实手绘"}</strong><small>{importedArtwork ? "可以继续用下面的画笔在照片上补充" : "拍下纸上的画，也可以从手机相册选择"}</small></div><label className={importedArtwork ? "imported" : ""}><input type="file" accept="image/*" onChange={importArtwork} /><span>{importedArtwork ? "更换图片" : "拍照 / 选择图片"}</span></label><p>图片仅导入当前画布，在本机处理，不会上传到织屿。</p></div><div className="canvas-frame"><canvas ref={canvasRef} className="art-canvas" aria-label="用手指或鼠标自由绘画" onPointerDown={begin} onPointerMove={draw} onPointerUp={endDrawing} onPointerCancel={endDrawing} />{!started && <div className="canvas-hint" aria-hidden="true"><span />从这里落下第一笔</div>}</div><div className="art-tools"><div className="tool-section"><div className="tool-heading"><span>画材</span><div className="canvas-history"><button disabled={!undoAvailable} onClick={undoLastChange}>撤销一步</button><button onClick={clearCanvas}>清空画布</button></div></div><div className="brush-types" aria-label="选择画材">{brushOptions.map((item) => <button key={item.id} className={brushType === item.id ? "selected" : ""} onClick={() => setBrushType(item.id)} aria-pressed={brushType === item.id}><i className={`brush-stroke ${item.id}`} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>笔触粗细</span><small>{brushSizes.find((item) => item.value === brush)?.label}</small></div><div className="brush-sizes" aria-label="选择笔触粗细">{brushSizes.map((item) => <button key={item.value} className={brush === item.value ? "selected" : ""} onClick={() => setBrush(item.value)} aria-label={`${item.label}笔触`} aria-pressed={brush === item.value}><i style={{ width: Math.max(5, item.value * .62), height: Math.max(5, item.value * .62), background: brushType === "eraser" ? "#FBF8F3" : color }} /><span>{item.label}</span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>色彩 · 36色</span><small>{brushType === "eraser" ? "切换颜色会继续保留橡皮擦" : "也可以自选"}</small></div><div className="palette" aria-label="选择画笔颜色">{palette.map((item) => <button key={item} className={`swatch ${color === item ? "selected" : ""}`} style={{ background: item }} aria-label={`选择颜色 ${item}`} onClick={() => setColor(item)} aria-pressed={color === item} />)}<label className="custom-color" aria-label="自选颜色"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><span>＋</span></label></div></div></div></section><section className="next-step"><div><span>{padDay(day)}</span><p>{plan.takeaway}</p></div><button className="primary-button" disabled={!started && !previewUrl} onClick={finishPainting}>完成这幅画，去赋义 <span>→</span></button></section>
+    </section>}
+    {phase === "reflect" && <JourneyProgress current="reflect" />}
     {phase === "reflect" && <section className="reflection-flow"><button className="back-button" onClick={() => setPhase("create")}>← 回到画布</button><div className="art-preview"><img src={previewUrl} alt="刚刚完成的作品" /></div><div className="section-heading"><span>STEP 02</span><h2>由你来解释这幅画</h2><p>我们不会根据颜色或线条判断你的心理状态。回应只来自你愿意说出的部分。</p></div><label className="field"><span>{plan.reflectionLabel}</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder={plan.titlePlaceholder} /></label><fieldset><legend>此刻更接近哪些感受？<small>最多选3个；不想命名可选“无法命名”</small></legend><div className="choice-cloud">{feelingsList.map((item) => <button type="button" key={item} className={feelings.includes(item) ? "active" : ""} onClick={() => toggleFeeling(item)}>{item}</button>)}</div></fieldset><label className={`field range-field ${energyChosen ? "answered" : ""}`}><span>这幅作品现在有多少能量？<strong>{energyChosen ? energyText : "请拖动选择"}</strong></span><input type="range" min="1" max="5" value={energy} onChange={(event) => { setEnergy(Number(event.target.value)); setEnergyChosen(true); }} /><div className="range-labels"><i>很轻</i><i>很充沛</i></div></label><fieldset><legend>你最想让人留意画面里的什么？</legend><div className="choice-cloud">{focusList.map((item) => <button type="button" key={item} className={focusChosen && focus === item ? "active" : ""} onClick={() => { setFocus(item); setFocusChosen(true); }}>{item}</button>)}</div></fieldset><label className="field"><span>再留下一句话<small>必填 · 只保存在当前设备</small></span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={280} placeholder="我画到这里时，注意到……" /></label><fieldset><legend>今天希望怎样被回应？</legend><div className="response-grid">{responseOptions.map((item) => <button type="button" key={item.id} className={responseChosen && responseMode === item.id ? "active" : ""} onClick={() => { setResponseMode(item.id); setResponseChosen(true); }}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div></fieldset><div className={`completion-gate ${completionReady ? "ready" : ""}`}><strong>{completionReady ? "今天的必填内容已完成" : "完成以下内容后即可打卡"}</strong><div>{completionRequirements.map((item) => <span key={item.label} className={item.done ? "done" : ""}>{item.done ? "✓" : "○"} {item.label}</span>)}</div></div><button className="primary-button complete-checkin-button" disabled={!completionReady || saveStatus === "saving"} onClick={completeReflection}>{saveStatus === "saving" ? "正在完成打卡……" : "完成打卡"} <span>→</span></button></section>}
     {phase === "result" && <section className="result-flow">
       <div className="completion-mark">{padDay(day)}</div><div className="eyebrow">今天的作品完成了</div><h1>《{title}》</h1>

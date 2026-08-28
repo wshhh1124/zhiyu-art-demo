@@ -93,6 +93,26 @@ test("long-form guidance uses restrained visual reading cues", async () => {
   assert.match(styles, /\.field small,legend small \{[^}]*font-style:italic/);
 });
 
+test("each daily task is split into a reversible five-page journey", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(page, /type PracticePhase = "intro" \| "ground" \| "guide" \| "create" \| "reflect"/);
+  assert.match(page, /介绍/);
+  assert.match(page, /呼吸 \/ 到场/);
+  assert.match(page, /带着引导去作画/);
+  assert.match(page, /完成这幅画，去赋义/);
+  assert.match(page, /JourneyProgress current="reflect"/);
+  assert.match(page, /setPhase\("intro"\)/);
+  assert.match(page, /setPhase\("ground"\)/);
+  assert.match(page, /setPhase\("guide"\)/);
+  assert.match(page, /setPhase\("create"\)/);
+  assert.match(page, /function leaveCanvasForGuide/);
+  assert.match(page, /setPreviewUrl\(canvasRef\.current\.toDataURL/);
+  assert.match(styles, /\.journey-progress/);
+  assert.match(styles, /\.breath-practice/);
+  assert.match(styles, /prefers-reduced-motion:reduce[^}]*animation:none!important/);
+});
+
 test("pilot flow protects work and requires a complete, backend-synced check-in", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
