@@ -114,6 +114,7 @@ export default function Home() {
   const [shareMode, setShareMode] = useState<ShareMode>("artTitle");
   const [sharePreviewUrl, setSharePreviewUrl] = useState("");
   const [shareGenerating, setShareGenerating] = useState(false);
+  const [shareHint, setShareHint] = useState("");
   const [saveImagePreview, setSaveImagePreview] = useState<SaveImagePreview>(null);
   const plan = dayPlans[day - 1];
   const energyText = useMemo(() => ["", "很轻", "偏低", "中等", "在流动", "很充沛"][energy], [energy]);
@@ -284,7 +285,7 @@ export default function Home() {
   }
   async function resetFields(targetDay: number) {
     if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有由老师开放。开放后刷新网页即可进入。`); return; }
-    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setSaveStatus("idle"); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
+    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setSaveStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
     try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
     catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -366,8 +367,16 @@ export default function Home() {
   async function shareGeneratedCard() {
     if (!sharePreviewUrl) return;
     const blob = await (await fetch(sharePreviewUrl)).blob(); const file = new File([blob], `Day${day}-${title.trim() || plan.shortTitle}-分享卡.png`, { type: "image/png" });
-    if (navigator.share && (!navigator.canShare || navigator.canShare({ files: [file] }))) { try { await navigator.share({ files: [file], title: `Day ${day} · ${plan.shortTitle}` }); return; } catch { return; } }
-    setStorageNote("当前浏览器不能直接调用系统分享。请点击“长按保存卡片”，再长按弹出的图片保存到相册。");
+    setShareHint("");
+    if (navigator.share && navigator.canShare?.({ files: [file] })) {
+      try { await navigator.share({ files: [file], title: `Day ${day} · ${plan.shortTitle}` }); return; }
+      catch (caught) { if (caught instanceof DOMException && caught.name === "AbortError") return; }
+    }
+    const inWeChat = /MicroMessenger/i.test(navigator.userAgent);
+    const hint = inWeChat
+      ? "微信内暂时不能由网页直接代发图片：请长按保存分享卡，再返回聊天选择这张图片发送。"
+      : "当前浏览器不能把图片直接交给微信：请长按保存分享卡，再从微信相册选择发送。";
+    setShareHint(hint); setStorageNote(hint); openImageSavePreview(sharePreviewUrl, "微信分享卡");
   }
   async function downloadArchive() {
     if (!allComplete) return; const canvas = document.createElement("canvas"); canvas.width = 1240; canvas.height = 3150; const context = canvas.getContext("2d"); if (!context) return;
@@ -392,7 +401,7 @@ export default function Home() {
       <div className="mirror-card"><span>即时镜面回应 · 体验版</span><p>{mirrorFeedback()}</p><small>回应只复述你主动提供的信息，不分析颜色、符号或人格。</small></div>
       <div className="closing-card"><span>先把今天放回生活</span><p>{plan.closing}</p></div>
       <div className={`local-card ${saveStatus}`}><strong>{saveStatus === "saved" ? "已确认保存到本机作品册" : "正在确认保存状态"}</strong><p>{saveStatus === "saved" ? "作品已写入当前设备和浏览器。建议同时保存作品原图或导出完整备份。" : "只有本机数据库确认写入后，才会显示保存成功。"}</p><div className="cloud-sync-line"><span className={cloudSyncStatus}>{cloudSyncStatus === "syncing" ? "正在同步完成记录" : cloudSyncStatus === "synced" ? "完成记录已同步给老师" : cloudSyncStatus === "failed" ? "完成记录尚未同步" : "等待同步完成记录"}</span>{cloudSyncStatus === "failed" && records.find((item) => item.day === day) && <button onClick={() => { const record = records.find((item) => item.day === day); if (record) void syncCompletion(record); }}>重试同步</button>}</div><div className="local-actions"><button onClick={() => openImageSavePreview(previewUrl, "作品原图")}>长按保存作品</button><button className="outline" onClick={shareCheckinReceipt}>发送打卡回执（备用）</button></div><small>云端只记录编号、天数和完成时间，不包含作品与感受；备用回执可在网络异常时发给老师。</small></div>
-      <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再保存或分享。点击保存后会在网页内显示纯图片。</p><div className="share-output-actions"><button onClick={() => openImageSavePreview(sharePreviewUrl, "分享卡")}>长按保存卡片</button><button onClick={shareGeneratedCard}>调用系统分享</button></div></div>}</div>
+      <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); setShareHint(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再保存或分享。支持时会弹出手机分享面板，请选择微信；微信内不支持时会自动进入长按保存。</p><div className="share-output-actions"><button onClick={() => openImageSavePreview(sharePreviewUrl, "分享卡")}>长按保存卡片</button><button className="wechat-share-button" onClick={shareGeneratedCard}>分享到微信</button></div>{shareHint && <div className="wechat-share-hint" role="status">{shareHint}</div>}</div>}</div>
       {day < 7 && (day + 1 <= maxUnlockedDay ? <button className="primary-button" onClick={() => openDay(day + 1)}>{records.some((record) => record.day === day + 1) ? "查看" : "进入"} Day {padDay(day + 1)} <span>→</span></button> : <div className="locked-next"><strong>Day {padDay(day + 1)} 等待老师开放</strong><span>开放后点击顶部“刷新开放”即可进入；今天可以先在这里收束。</span></div>)}
       {day === 7 && allComplete && <button className="primary-button" onClick={downloadArchive}>下载7日个人作品档案 <span>↓</span></button>}
       <button className="primary-button secondary" onClick={showGallery}>查看7日作品册 <span>▦</span></button>

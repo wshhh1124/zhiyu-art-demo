@@ -43,6 +43,10 @@ test("seven-day experience includes gallery, opt-in sharing and archive without 
   assert.match(page, /作品＋标题/);
   assert.match(page, /作品＋一句话/);
   assert.match(page, /生成卡片预览/);
+  assert.match(page, /分享到微信/);
+  assert.match(page, /MicroMessenger/);
+  assert.match(page, /navigator\.canShare/);
+  assert.match(page, /openImageSavePreview\(sharePreviewUrl, "微信分享卡"\)/);
   assert.match(page, /作品已经嵌入卡片/);
   assert.match(page, /drawImageContain\(context, image/);
   assert.doesNotMatch(page, /愿意留下一份体验反馈吗/);
