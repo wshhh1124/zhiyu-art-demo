@@ -148,7 +148,7 @@ fieldset { border:0; padding:0; }
 .local-card p { margin:6px 0 12px; }
 .local-card button { border:0; border-radius:10px; padding:9px 12px; background:var(--teal); color:white; cursor:pointer; }
 .local-card>small { display:block; margin-top:9px; }
-.local-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.local-actions { display:grid; grid-template-columns:1fr; gap:8px; }
 .local-actions button.outline { border:1px solid var(--teal); background:transparent; color:var(--teal); }
 .cloud-sync-line { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 10px; border-radius:10px; padding:9px 10px; background:rgba(255,255,255,.5); }
 .cloud-sync-line span { color:var(--muted); font-size:9px; }

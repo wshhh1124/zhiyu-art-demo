@@ -58,8 +58,9 @@ test("seven-day experience includes gallery, opt-in sharing and archive without 
 test("artwork and share card open as long-pressable images instead of file previews", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const styles = await readFile(new URL("app/globals.css", root), "utf8");
-  assert.match(page, /长按保存作品/);
-  assert.match(page, /长按保存卡片/);
+  assert.doesNotMatch(page, /长按保存作品/);
+  assert.doesNotMatch(page, /长按保存卡片/);
+  assert.match(page, /className="share-output-actions"[\s\S]*?>保存图片<\/button>/);
   assert.match(page, /长按下面的图片/);
   assert.match(page, /role="dialog"/);
   assert.match(page, /saveImagePreview\.url/);
