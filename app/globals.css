@@ -138,7 +138,7 @@ fieldset { border:0; padding:0; }
 .response-grid button.active { border-color:var(--teal); box-shadow:inset 0 0 0 1px var(--teal); }
 .completion-mark { display:grid; place-items:center; width:54px; height:54px; margin:12px 0 20px; border-radius:50%; background:var(--teal); color:white; font-family:serif; font-size:20px; }
 .result-art { margin-top:24px; }
-.mirror-card,.closing-card,.local-card,.review-card,.share-card,.feedback-entry,.feedback-form,.day-seven-summary,.backup-card { margin:14px 0; border-radius:18px; padding:18px; background:rgba(255,255,255,.62); }
+.mirror-card,.closing-card,.local-card,.review-card,.share-card,.day-seven-summary,.backup-card { margin:14px 0; border-radius:18px; padding:18px; background:rgba(255,255,255,.62); }
 .mirror-card p { font-family:"Songti SC",serif; font-size:17px; line-height:1.8; }
 .mirror-card small,.local-card p,.local-card>small { color:var(--muted); font-size:10px; line-height:1.6; }
 .closing-card { border-left:3px solid var(--sage); background:rgba(119,166,161,.08); }
@@ -159,16 +159,16 @@ fieldset { border:0; padding:0; }
 .review-card ol { margin:16px 0 0; padding-left:22px; color:#4e5a58; font-size:13px; line-height:2; }
 .storage-banner { margin:0 0 18px; border:1px solid rgba(47,93,98,.18); border-radius:12px; padding:12px 14px; background:#e9f2ef; color:#365f5a; font-size:12px; line-height:1.6; }
 .share-card { margin-top:28px; background:rgba(119,166,161,.1); }
-.share-card>span,.feedback-entry>span,.day-seven-summary>span { color:var(--teal); font-size:10px; letter-spacing:.12em; }
-.share-card h2,.feedback-entry h2,.day-seven-summary h2 { margin:7px 0; font-family:"Songti SC",serif; font-size:25px; }
-.share-card>p,.feedback-entry>p,.day-seven-summary>p { margin:0 0 15px; color:var(--muted); font-size:11px; line-height:1.7; }
+.share-card>span,.day-seven-summary>span { color:var(--teal); font-size:10px; letter-spacing:.12em; }
+.share-card h2,.day-seven-summary h2 { margin:7px 0; font-family:"Songti SC",serif; font-size:25px; }
+.share-card>p,.day-seven-summary>p { margin:0 0 15px; color:var(--muted); font-size:11px; line-height:1.7; }
 .share-options { display:grid; grid-template-columns:repeat(3,1fr); gap:7px; }
 .share-options button { min-width:0; border:1px solid var(--line); border-radius:13px; padding:11px 8px; background:rgba(255,255,255,.5); color:var(--ink); text-align:left; cursor:pointer; }
 .share-options button strong,.share-options button small { display:block; }
 .share-options button strong { font-size:11px; }
 .share-options button small { margin-top:4px; color:var(--muted); font-size:8px; line-height:1.45; }
 .share-options button.active { border-color:var(--teal); background:white; box-shadow:inset 0 0 0 1px var(--teal); }
-.card-action,.feedback-entry>button { width:100%; margin-top:13px; border:0; border-radius:12px; padding:12px 14px; background:var(--teal); color:white; font-weight:700; cursor:pointer; }
+.card-action { width:100%; margin-top:13px; border:0; border-radius:12px; padding:12px 14px; background:var(--teal); color:white; font-weight:700; cursor:pointer; }
 .card-action:disabled { opacity:.55; cursor:wait; }
 .share-output { margin-top:16px; border:1px solid rgba(47,93,98,.2); border-radius:16px; padding:12px; background:rgba(255,255,255,.72); }
 .share-output-heading { display:flex; align-items:baseline; justify-content:space-between; gap:10px; margin:2px 2px 10px; }
@@ -190,11 +190,6 @@ fieldset { border:0; padding:0; }
 .image-save-dialog>img { display:block; width:100%; max-height:64vh; border-radius:14px; background:white; object-fit:contain; box-shadow:0 12px 36px rgba(31,43,42,.12); -webkit-touch-callout:default; user-select:none; pointer-events:auto; }
 .image-save-dialog>small { display:block; margin:10px 2px; color:var(--muted); font-size:9px; line-height:1.6; }
 .image-save-close { width:100%; border:0; border-radius:12px; padding:12px 14px; background:var(--teal); color:white; font-weight:700; cursor:pointer; }
-.feedback-entry { margin-top:24px; border:1px dashed rgba(47,93,98,.28); background:rgba(255,255,255,.38); }
-.feedback-form { margin-top:-8px; border:1px solid var(--line); }
-.feedback-form .card-action { margin-top:0; }
-.feedback-form .secondary-action { margin-top:8px; border:1px solid var(--teal); background:transparent; color:var(--teal); }
-.identity-note { display:block; margin-top:8px; color:var(--muted); font-size:9px; line-height:1.55; }
 .gallery-flow { padding:10px 2px 30px; }
 .gallery-flow>h1 { margin:0; font-family:"Songti SC","Noto Serif CJK SC",serif; font-size:clamp(36px,10vw,54px); line-height:1.12; letter-spacing:-.04em; }
 .gallery-intro { margin:16px 0 22px; color:var(--muted); font-size:13px; line-height:1.7; }
