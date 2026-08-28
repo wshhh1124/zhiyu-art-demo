@@ -84,6 +84,15 @@ test("all seven days include psychoeducation, participant choice and grounding",
   assert.match(page, /先把今天放回生活/);
 });
 
+test("long-form guidance uses restrained visual reading cues", async () => {
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(styles, /\.intro-card h1 \{[^}]*text-decoration:underline/);
+  assert.match(styles, /\.practice-guide>h2 \{[^}]*color:var\(--teal\)[^}]*text-decoration:underline/);
+  assert.match(styles, /\.starter-note \{[^}]*font-style:italic/);
+  assert.match(styles, /\.field>span,legend \{[^}]*color:var\(--teal\)/);
+  assert.match(styles, /\.field small,legend small \{[^}]*font-style:italic/);
+});
+
 test("pilot flow protects work and requires a complete, backend-synced check-in", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
