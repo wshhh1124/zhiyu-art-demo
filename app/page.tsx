@@ -75,10 +75,6 @@ function localDateKey(value: string | Date) {
   const date = typeof value === "string" ? new Date(value) : value;
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
-function formatLocalTime(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
-}
-
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
@@ -91,6 +87,7 @@ export default function Home() {
   const [codeError, setCodeError] = useState("");
   const [switchCode, setSwitchCode] = useState("");
   const [cloudMaxDay, setCloudMaxDay] = useState(1);
+  const [cloudCompletedDays, setCloudCompletedDays] = useState<number[]>([]);
   const [cloudSyncStatus, setCloudSyncStatus] = useState<CloudSyncStatus>("idle");
   const [phase, setPhase] = useState<Phase>("create");
   const [day, setDay] = useState(1);
@@ -107,8 +104,11 @@ export default function Home() {
   const [title, setTitle] = useState("");
   const [feelings, setFeelings] = useState<string[]>([]);
   const [energy, setEnergy] = useState(3);
+  const [energyChosen, setEnergyChosen] = useState(false);
   const [focus, setFocus] = useState("色彩");
+  const [focusChosen, setFocusChosen] = useState(false);
   const [responseMode, setResponseMode] = useState("seen");
+  const [responseChosen, setResponseChosen] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [shareMode, setShareMode] = useState<ShareMode>("artTitle");
@@ -121,6 +121,15 @@ export default function Home() {
   const completed = records.length;
   const allComplete = completed === 7;
   const maxUnlockedDay = Math.min(7, Math.max(1, cloudMaxDay));
+  const completionRequirements = [
+    { label: "完成作品", done: Boolean(previewUrl) },
+    { label: "为作品命名", done: Boolean(title.trim()) },
+    { label: "选择此刻的感受", done: feelings.length > 0 },
+    { label: "记录作品能量", done: energyChosen },
+    { label: "选择想被留意的部分", done: focusChosen },
+    { label: "选择希望获得的回应", done: responseChosen },
+  ];
+  const completionReady = completionRequirements.every((item) => item.done);
   const nextIncompleteDay = dayPlans.find((item) => !records.some((record) => record.day === item.day))?.day ?? 7;
   const sortedRecords = useMemo(() => [...records].sort((a, b) => a.day - b.day), [records]);
   const feelingSummary = useMemo(() => {
@@ -172,7 +181,7 @@ export default function Home() {
       const activeProfile: ParticipantProfile = existingProfile
         ? existingProfile
         : { id: "profile", participantId: access.code, startedAt: earliestCompletion ?? access.joinedAt ?? new Date().toISOString() };
-      await saveParticipantProfile(activeProfile); setProfile(activeProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setUnlocked(true);
+      await saveParticipantProfile(activeProfile); setProfile(activeProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setUnlocked(true);
       const availableDay = access.currentDay;
       const next = dayPlans.find((item) => item.day <= availableDay && !saved.some((record) => record.day === item.day))?.day;
       if (saved.length || !next) { setDay(next ?? Math.min(availableDay, 7)); setPhase("gallery"); }
@@ -194,20 +203,24 @@ export default function Home() {
       await clearExperienceData();
       const activeProfile: ParticipantProfile = { id: "profile", participantId: access.code, startedAt: access.joinedAt ?? new Date().toISOString() };
       await saveParticipantProfile(activeProfile);
-      setProfile(activeProfile); setRecords([]); setCloudMaxDay(access.currentDay); setParticipantIdInput(access.code); setSwitchCode(""); setUnlocked(true); setStorageNote("旧记录已从这台设备清除，已经切换到新的参与编号。");
+      setProfile(activeProfile); setRecords([]); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setParticipantIdInput(access.code); setSwitchCode(""); setUnlocked(true); setStorageNote("旧记录已从这台设备清除，已经切换到新的参与编号。");
       await resetFields(1);
     } catch (caught) { setCodeError(caught instanceof Error ? caught.message : "清除或更换编号失败，请稍后重试。"); }
   }
   async function refreshCloudAccess() {
     if (!profile) return;
-    try { const access = await refreshParticipantAccess(profile.participantId); setCloudMaxDay(access.currentDay); setStorageNote(`老师目前开放到 Day ${padDay(access.currentDay)}，进度已刷新。`); }
+    try { const access = await refreshParticipantAccess(profile.participantId); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setStorageNote(`老师目前开放到 Day ${padDay(access.currentDay)}，进度已刷新。`); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "开放进度刷新失败，请稍后重试。"); }
   }
   async function syncCompletion(record: DayRecord) {
-    if (!profile) return;
+    if (!profile) return false;
     setCloudSyncStatus("syncing");
-    try { await syncParticipantCompletion(profile.participantId, record.day, record.completedAt); setCloudSyncStatus("synced"); setStorageNote(`Day ${padDay(record.day)} 已保存到本机，完成记录也已同步给老师。`); }
-    catch { setCloudSyncStatus("failed"); setStorageNote(`Day ${padDay(record.day)} 已安全保存在本机，但完成记录尚未同步。请检查网络后重试。`); }
+    try {
+      await syncParticipantCompletion(profile.participantId, record.day, record.completedAt);
+      setCloudCompletedDays((current) => current.includes(record.day) ? current : [...current, record.day]);
+      setCloudSyncStatus("synced"); setStorageNote(`Day ${padDay(record.day)} 打卡成功，后端已经记录。`); return true;
+    }
+    catch { setCloudSyncStatus("failed"); setStorageNote(`Day ${padDay(record.day)} 的作品已安全保存在本机，但打卡还没有同步到后端。请点击“重新同步完成打卡”。`); return false; }
   }
   function point(event: PointerEvent<HTMLCanvasElement>) { const rect = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
   function captureUndoSnapshot() {
@@ -273,7 +286,7 @@ export default function Home() {
     return `${opening}${endings[responseMode]}`;
   }
   async function completeReflection() {
-    if (!title.trim()) { setError("先为作品取一个只属于今天的名字。"); return; }
+    if (!completionReady) { setError("请先完成上方所有必填步骤，再提交今天的打卡。"); return; }
     const record: DayRecord = { day, title: title.trim(), image: previewUrl, feelings, energy, focus, responseMode, note: note.trim(), completedAt: new Date().toISOString() };
     setError(""); setSaveStatus("saving");
     try {
@@ -285,7 +298,7 @@ export default function Home() {
   }
   async function resetFields(targetDay: number) {
     if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有由老师开放。开放后刷新网页即可进入。`); return; }
-    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setFocus("色彩"); setResponseMode("seen"); setNote(""); setError(""); setSaveStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
+    setDay(targetDay); setPhase("create"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setEnergyChosen(false); setFocus("色彩"); setFocusChosen(false); setResponseMode("seen"); setResponseChosen(false); setNote(""); setError(""); setSaveStatus("idle"); setCloudSyncStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
     try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
     catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -294,7 +307,7 @@ export default function Home() {
     const saved = records.find((record) => record.day === targetDay);
     if (!saved && targetDay > maxUnlockedDay) { setStorageNote(`Day ${padDay(targetDay)} 还没有由老师开放。`); return; }
     if (!saved) { void resetFields(targetDay); return; }
-    setDay(saved.day); setTitle(saved.title); setPreviewUrl(saved.image); setFeelings(saved.feelings); setEnergy(saved.energy); setFocus(saved.focus); setResponseMode(saved.responseMode); setNote(saved.note); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveImagePreview(null); setSaveStatus("saved"); setPhase("result"); window.scrollTo({ top: 0, behavior: "smooth" });
+    setDay(saved.day); setTitle(saved.title); setPreviewUrl(saved.image); setFeelings(saved.feelings); setEnergy(saved.energy); setEnergyChosen(true); setFocus(saved.focus); setFocusChosen(true); setResponseMode(saved.responseMode); setResponseChosen(true); setNote(saved.note); setSharePreviewUrl(""); setShareMode("artTitle"); setSaveImagePreview(null); setSaveStatus("saved"); setCloudSyncStatus(cloudCompletedDays.includes(saved.day) ? "synced" : "failed"); setPhase("result"); window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function showGallery() {
     if (((phase === "create" && started) || phase === "reflect") && !window.confirm("当前内容还没有正式保存。草稿已尽量自动保留，确定先离开吗？")) return;
@@ -303,14 +316,6 @@ export default function Home() {
   function openImageSavePreview(url: string, label: string) {
     if (!url) return;
     setSaveImagePreview({ url, label });
-  }
-
-  async function shareCheckinReceipt() {
-    const record = records.find((item) => item.day === day); if (!record || !profile) return;
-    const text = `织屿7日打卡回执\n参与编号：${profile.participantId}\nDay ${padDay(day)} · ${plan.shortTitle}\n完成时间：${formatLocalTime(record.completedAt)}\n累计完成：${completed}/7\n作品：未附（由参与者自行决定是否分享）`;
-    if (navigator.share) { try { await navigator.share({ title: `Day ${padDay(day)} 打卡回执`, text }); return; } catch { /* participant cancelled */ } }
-    try { await navigator.clipboard.writeText(text); setStorageNote("打卡回执已复制。请粘贴到活动群或发给老师，作为完成记录。"); }
-    catch { setError("当前浏览器无法复制打卡回执，请截屏完成页发给老师。"); }
   }
 
   async function exportBackup() {
@@ -394,13 +399,13 @@ export default function Home() {
     <header className="topbar"><button className="brand-mark" onClick={showGallery}>织屿心理</button><div><span>{completed}/7 已完成 · 开放至 Day {maxUnlockedDay}</span><button onClick={refreshCloudAccess}>刷新开放</button><button onClick={showGallery}>7日作品册</button></div></header>
     {storageNote && <div className="storage-banner">{storageNote}</div>}{error && <div className="error-banner" role="alert">{error}</div>}
     {phase === "create" && <><section className="intro-card"><div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1>{plan.title}</h1><p>{plan.prompt}</p><div className="starter-note">起笔提示：{plan.starter}</div><div className="time-note"><span>约5–8分钟</span><span>没有标准答案</span><span>不分析画作</span></div></section><section className="practice-guide" aria-label="今日练习说明"><span>今天我们在练习</span><h2>{plan.practiceAim}</h2><p>{plan.context}</p><div className="guide-grid"><div><strong>开始前</strong><p>{plan.prepare}</p></div><div><strong>你的选择权</strong><p>{plan.permission}</p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p>睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。</p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section><section className="studio" aria-label="绘画工作台"><div className="creation-source"><div><span>选择创作方式</span><strong>{importedArtwork ? "纸上作品已经导入" : "网页直接画，或上传真实手绘"}</strong><small>{importedArtwork ? "可以继续用下面的画笔在照片上补充" : "拍下纸上的画，也可以从手机相册选择"}</small></div><label className={importedArtwork ? "imported" : ""}><input type="file" accept="image/*" onChange={importArtwork} /><span>{importedArtwork ? "更换图片" : "拍照 / 选择图片"}</span></label><p>图片仅导入当前画布，在本机处理，不会上传到织屿。</p></div><div className="canvas-frame"><canvas ref={canvasRef} className="art-canvas" aria-label="用手指或鼠标自由绘画" onPointerDown={begin} onPointerMove={draw} onPointerUp={endDrawing} onPointerCancel={endDrawing} />{!started && <div className="canvas-hint" aria-hidden="true"><span />从这里落下第一笔</div>}</div><div className="art-tools"><div className="tool-section"><div className="tool-heading"><span>画材</span><div className="canvas-history"><button disabled={!undoAvailable} onClick={undoLastChange}>撤销一步</button><button onClick={clearCanvas}>清空画布</button></div></div><div className="brush-types" aria-label="选择画材">{brushOptions.map((item) => <button key={item.id} className={brushType === item.id ? "selected" : ""} onClick={() => setBrushType(item.id)} aria-pressed={brushType === item.id}><i className={`brush-stroke ${item.id}`} aria-hidden="true" /><span><strong>{item.label}</strong><small>{item.hint}</small></span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>笔触粗细</span><small>{brushSizes.find((item) => item.value === brush)?.label}</small></div><div className="brush-sizes" aria-label="选择笔触粗细">{brushSizes.map((item) => <button key={item.value} className={brush === item.value ? "selected" : ""} onClick={() => setBrush(item.value)} aria-label={`${item.label}笔触`} aria-pressed={brush === item.value}><i style={{ width: Math.max(5, item.value * .62), height: Math.max(5, item.value * .62), background: brushType === "eraser" ? "#FBF8F3" : color }} /><span>{item.label}</span></button>)}</div></div><div className="tool-section"><div className="tool-heading"><span>色彩 · 36色</span><small>{brushType === "eraser" ? "切换颜色会继续保留橡皮擦" : "也可以自选"}</small></div><div className="palette" aria-label="选择画笔颜色">{palette.map((item) => <button key={item} className={`swatch ${color === item ? "selected" : ""}`} style={{ background: item }} aria-label={`选择颜色 ${item}`} onClick={() => setColor(item)} aria-pressed={color === item} />)}<label className="custom-color" aria-label="自选颜色"><input type="color" value={color} onChange={(event) => setColor(event.target.value)} /><span>＋</span></label></div></div></div></section><section className="next-step"><div><span>{padDay(day)}</span><p>{plan.takeaway}</p></div><button className="primary-button" disabled={!started && !previewUrl} onClick={finishPainting}>完成这幅画 <span>→</span></button></section></>}
-    {phase === "reflect" && <section className="reflection-flow"><button className="back-button" onClick={() => setPhase("create")}>← 回到画布</button><div className="art-preview"><img src={previewUrl} alt="刚刚完成的作品" /></div><div className="section-heading"><span>STEP 02</span><h2>由你来解释这幅画</h2><p>我们不会根据颜色或线条判断你的心理状态。回应只来自你愿意说出的部分。</p></div><label className="field"><span>{plan.reflectionLabel}</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder={plan.titlePlaceholder} /></label><fieldset><legend>此刻更接近哪些感受？<small>最多选3个，也可以不命名</small></legend><div className="choice-cloud">{feelingsList.map((item) => <button type="button" key={item} className={feelings.includes(item) ? "active" : ""} onClick={() => toggleFeeling(item)}>{item}</button>)}</div></fieldset><label className="field range-field"><span>这幅作品现在有多少能量？<strong>{energyText}</strong></span><input type="range" min="1" max="5" value={energy} onChange={(event) => setEnergy(Number(event.target.value))} /><div className="range-labels"><i>很轻</i><i>很充沛</i></div></label><fieldset><legend>你最想让人留意画面里的什么？</legend><div className="choice-cloud">{focusList.map((item) => <button type="button" key={item} className={focus === item ? "active" : ""} onClick={() => setFocus(item)}>{item}</button>)}</div></fieldset><label className="field"><span>如果愿意，再留下一句话<small>只保存在当前设备</small></span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={280} placeholder="我画到这里时，注意到……" /></label><fieldset><legend>今天希望怎样被回应？</legend><div className="response-grid">{responseOptions.map((item) => <button type="button" key={item.id} className={responseMode === item.id ? "active" : ""} onClick={() => setResponseMode(item.id)}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div></fieldset><button className="primary-button" disabled={saveStatus === "saving"} onClick={completeReflection}>{saveStatus === "saving" ? "正在保存到本机作品册……" : saveStatus === "failed" ? "重新保存" : "保存并看看回应"} <span>→</span></button></section>}
+    {phase === "reflect" && <section className="reflection-flow"><button className="back-button" onClick={() => setPhase("create")}>← 回到画布</button><div className="art-preview"><img src={previewUrl} alt="刚刚完成的作品" /></div><div className="section-heading"><span>STEP 02</span><h2>由你来解释这幅画</h2><p>我们不会根据颜色或线条判断你的心理状态。回应只来自你愿意说出的部分。</p></div><label className="field"><span>{plan.reflectionLabel}</span><input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={40} placeholder={plan.titlePlaceholder} /></label><fieldset><legend>此刻更接近哪些感受？<small>最多选3个；不想命名可选“无法命名”</small></legend><div className="choice-cloud">{feelingsList.map((item) => <button type="button" key={item} className={feelings.includes(item) ? "active" : ""} onClick={() => toggleFeeling(item)}>{item}</button>)}</div></fieldset><label className={`field range-field ${energyChosen ? "answered" : ""}`}><span>这幅作品现在有多少能量？<strong>{energyChosen ? energyText : "请拖动选择"}</strong></span><input type="range" min="1" max="5" value={energy} onChange={(event) => { setEnergy(Number(event.target.value)); setEnergyChosen(true); }} /><div className="range-labels"><i>很轻</i><i>很充沛</i></div></label><fieldset><legend>你最想让人留意画面里的什么？</legend><div className="choice-cloud">{focusList.map((item) => <button type="button" key={item} className={focusChosen && focus === item ? "active" : ""} onClick={() => { setFocus(item); setFocusChosen(true); }}>{item}</button>)}</div></fieldset><label className="field"><span>如果愿意，再留下一句话<small>选填 · 只保存在当前设备</small></span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={280} placeholder="我画到这里时，注意到……" /></label><fieldset><legend>今天希望怎样被回应？</legend><div className="response-grid">{responseOptions.map((item) => <button type="button" key={item.id} className={responseChosen && responseMode === item.id ? "active" : ""} onClick={() => { setResponseMode(item.id); setResponseChosen(true); }}><strong>{item.label}</strong><span>{item.hint}</span></button>)}</div></fieldset><div className={`completion-gate ${completionReady ? "ready" : ""}`}><strong>{completionReady ? "今天的必填内容已完成" : "完成以下内容后即可打卡"}</strong><div>{completionRequirements.map((item) => <span key={item.label} className={item.done ? "done" : ""}>{item.done ? "✓" : "○"} {item.label}</span>)}</div><small>“留下一句话”为选填，不影响完成打卡。</small></div><button className="primary-button complete-checkin-button" disabled={!completionReady || saveStatus === "saving"} onClick={completeReflection}>{saveStatus === "saving" ? "正在完成打卡……" : "完成打卡"} <span>→</span></button></section>}
     {phase === "result" && <section className="result-flow">
       <div className="completion-mark">{padDay(day)}</div><div className="eyebrow">今天的作品完成了</div><h1>《{title}》</h1>
       <div className="art-preview result-art"><img src={previewUrl} alt={title} /></div>
       <div className="mirror-card"><span>即时镜面回应 · 体验版</span><p>{mirrorFeedback()}</p><small>回应只复述你主动提供的信息，不分析颜色、符号或人格。</small></div>
       <div className="closing-card"><span>先把今天放回生活</span><p>{plan.closing}</p></div>
-      <div className={`local-card ${saveStatus}`}><strong>{saveStatus === "saved" ? "已确认保存到本机作品册" : "正在确认保存状态"}</strong><p>{saveStatus === "saved" ? "作品已写入当前设备和浏览器，也可以在下面生成分享卡后保存图片。" : "只有本机数据库确认写入后，才会显示保存成功。"}</p><div className="cloud-sync-line"><span className={cloudSyncStatus}>{cloudSyncStatus === "syncing" ? "正在同步完成记录" : cloudSyncStatus === "synced" ? "完成记录已同步给老师" : cloudSyncStatus === "failed" ? "完成记录尚未同步" : "等待同步完成记录"}</span>{cloudSyncStatus === "failed" && records.find((item) => item.day === day) && <button onClick={() => { const record = records.find((item) => item.day === day); if (record) void syncCompletion(record); }}>重试同步</button>}</div><div className="local-actions"><button className="outline" onClick={shareCheckinReceipt}>发送打卡回执（备用）</button></div><small>云端只记录编号、天数和完成时间，不包含作品与感受；备用回执可在网络异常时发给老师。</small></div>
+      <div className={`local-card ${saveStatus} ${cloudSyncStatus}`}><strong>{cloudSyncStatus === "synced" ? "完成打卡 · 后端已记录" : cloudSyncStatus === "failed" ? "作品已保存，但打卡尚未同步" : "正在完成打卡"}</strong><p>{cloudSyncStatus === "synced" ? "你不需要再做任何操作。作品保存在当前设备，后端只看到编号、完成天数和时间。" : cloudSyncStatus === "failed" ? "请检查网络后重新同步；同步成功前，后端暂时看不到这一天已完成。" : "正在保存作品并向后端同步完成状态，请稍候。"}</p><div className="cloud-sync-line"><span className={cloudSyncStatus}>{cloudSyncStatus === "syncing" ? "正在同步到后端……" : cloudSyncStatus === "synced" ? "✓ 同步成功" : cloudSyncStatus === "failed" ? "同步失败" : "等待同步"}</span>{cloudSyncStatus === "failed" && records.find((item) => item.day === day) && <button onClick={() => { const record = records.find((item) => item.day === day); if (record) void syncCompletion(record); }}>重新同步完成打卡</button>}</div><small>作品、感受词和觉察文字不会上传到后端。</small></div>
       <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); setShareHint(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，再在这里保存图片或分享到微信。</p><div className="share-output-actions"><button onClick={() => openImageSavePreview(sharePreviewUrl, "分享卡")}>保存图片</button><button className="wechat-share-button" onClick={shareGeneratedCard}>分享到微信</button></div>{shareHint && <div className="wechat-share-hint" role="status">{shareHint}</div>}</div>}</div>
       {day < 7 && (day + 1 <= maxUnlockedDay ? <button className="primary-button" onClick={() => openDay(day + 1)}>{records.some((record) => record.day === day + 1) ? "查看" : "进入"} Day {padDay(day + 1)} <span>→</span></button> : <div className="locked-next"><strong>Day {padDay(day + 1)} 等待老师开放</strong><span>开放后点击顶部“刷新开放”即可进入；今天可以先在这里收束。</span></div>)}
       {day === 7 && allComplete && <button className="primary-button" onClick={downloadArchive}>下载7日个人作品档案 <span>↓</span></button>}

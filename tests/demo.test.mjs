@@ -84,19 +84,21 @@ test("all seven days include psychoeducation, participant choice and grounding",
   assert.match(page, /先把今天放回生活/);
 });
 
-test("pilot flow protects work and produces teacher-verifiable receipts", async () => {
+test("pilot flow protects work and requires a complete, backend-synced check-in", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
   assert.match(page, /参与编号/);
-  assert.match(page, /发送打卡回执/);
-  assert.match(page, /完成时间：/);
-  assert.match(page, /完成记录已同步给老师/);
+  assert.doesNotMatch(page, /发送打卡回执/);
+  assert.match(page, /完成打卡 · 后端已记录/);
+  assert.match(page, /completionRequirements/);
+  assert.match(page, /disabled=\{!completionReady \|\| saveStatus === "saving"\}/);
+  assert.match(page, /重新同步完成打卡/);
   assert.match(page, /syncParticipantCompletion/);
-  assert.match(page, /云端只记录编号、天数和完成时间/);
+  assert.match(page, /后端只看到编号、完成天数和时间/);
   assert.match(page, /撤销一步/);
   assert.match(page, /确定清空当前画面吗/);
   assert.match(page, /beforeunload/);
-  assert.match(page, /正在保存到本机作品册/);
+  assert.match(page, /正在完成打卡/);
   assert.match(page, /Day \{padDay\(day \+ 1\)\} 等待老师开放/);
   assert.match(page, /下载当前备份/);
   assert.match(page, /导入备份恢复/);
