@@ -172,6 +172,15 @@ async function adminDeleteParticipant(body) {
   ]);
   return adminOverview(body);
 }
+async function adminDeleteParticipants(body) {
+  requireAdmin(body);
+  const codes = [...new Set(Array.isArray(body.participantCodes) ? body.participantCodes.map(normalizeCode) : [])];
+  if (!codes.length || codes.length > 100 || codes.some((code) => !/^[A-Z0-9-]{3,24}$/.test(code))) throw Object.assign(new Error("请选择有效的参与编号。"), { statusCode: 400, code: "INVALID_CODES" });
+  const existing = await Promise.all(codes.map(readParticipant));
+  if (existing.some((item) => !item)) throw Object.assign(new Error("部分参与编号不存在，请刷新后重试。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
+  await Promise.all(codes.flatMap((code) => [db.collection(CHECKINS).where({ participantCode: code }).remove(), db.collection(PARTICIPANTS).doc(code).remove()]));
+  return adminOverview(body);
+}
 
 const actions = {
   "participant.join": joinParticipant,
@@ -184,6 +193,7 @@ const actions = {
   "admin.updateParticipant": adminUpdateParticipant,
   "admin.resetParticipant": adminResetParticipant,
   "admin.deleteParticipant": adminDeleteParticipant,
+  "admin.deleteParticipants": adminDeleteParticipants,
 };
 
 function corsHeaders(req) {

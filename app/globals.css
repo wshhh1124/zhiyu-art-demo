@@ -305,6 +305,10 @@ footer { display:flex; justify-content:space-between; gap:12px; margin-top:42px;
 .teacher-created pre { max-height:200px; overflow:auto; margin:12px 0 0; white-space:pre-wrap; color:var(--teal); font:600 13px/1.7 ui-monospace,monospace; }
 .teacher-table-wrap { overflow:auto; border:1px solid var(--line); border-radius:14px; background:rgba(255,255,255,.5); }
 .teacher-list-tools { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; }
+.teacher-participant-actions { display:flex; align-items:center; gap:10px; }
+.teacher-participant-actions button { padding:8px 12px; }
+.teacher-table-wrap input[type="checkbox"] { width:18px; height:18px; accent-color:var(--teal); }
+.teacher-select-all td { background:rgba(119,166,161,.07); color:var(--muted); font-size:11px; }
 .teacher-list-tools>input { width:min(100%,240px); border:1px solid var(--line); border-radius:12px; padding:10px 12px; background:white; color:var(--ink); outline:none; }
 .teacher-list-tools>div { display:flex; flex-wrap:wrap; gap:6px; }
 .teacher-list-tools button { border:1px solid var(--line); border-radius:999px; padding:8px 11px; background:white; color:var(--muted); font-size:9px; cursor:pointer; }

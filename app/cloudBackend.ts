@@ -67,3 +67,4 @@ export const addParticipantCode = (adminPassword: string, participantCode: strin
 export const updateTeacherParticipant = (adminPassword: string, participantCode: string, update: { status?: "active" | "inactive"; dayOverride?: number | null }) => request<TeacherOverview>("admin.updateParticipant", { adminPassword, participantCode, ...update });
 export const resetTeacherParticipant = (adminPassword: string, participantCode: string) => request<TeacherOverview>("admin.resetParticipant", { adminPassword, participantCode });
 export const deleteTeacherParticipant = (adminPassword: string, participantCode: string) => request<TeacherOverview>("admin.deleteParticipant", { adminPassword, participantCode });
+export const deleteTeacherParticipants = (adminPassword: string, participantCodes: string[]) => request<TeacherOverview>("admin.deleteParticipants", { adminPassword, participantCodes });
