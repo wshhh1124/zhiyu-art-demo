@@ -53,9 +53,9 @@ button { -webkit-tap-highlight-color:transparent; }
 .journey-progress span.complete i { border-color:var(--sage); background:#dfecea; color:var(--teal); }
 .journey-progress span.complete::after { background:rgba(119,166,161,.55); }
 .intro-card { padding:8px 4px 22px; }
-.intro-card h1 { line-height:1.18; }
+.intro-card h1 { background:none; line-height:1.18; text-decoration:none; }
 .intro-card>p { max-width:500px; margin:20px 0; color:#4e5a58; font-size:15px; font-weight:400; line-height:1.8; }
-.theme-keyword { color:var(--rose-ink); font-weight:700; }
+.theme-keyword { background:none; color:var(--rose-ink); font-weight:700; text-decoration:none; }
 .sentence-line { display:block; overflow-wrap:anywhere; }
 .sentence-line + .sentence-line { margin-top:.65em; }
 .hint-label { display:block; margin-bottom:7px; color:var(--teal); font-family:"PingFang SC",sans-serif; font-size:11px; font-style:normal; }

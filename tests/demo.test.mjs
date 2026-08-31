@@ -115,7 +115,9 @@ test("long-form guidance uses restrained visual reading cues", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const styles = await readFile(new URL("app/globals.css", root), "utf8");
   assert.doesNotMatch(styles, /(?:\.intro-card h1|\.practice-guide>h2|\.section-heading h2|\.guide-grid strong)[^{]*\{[^}]*text-decoration:underline/);
+  assert.doesNotMatch(styles, /\.intro-card h1[^{]*\{[^}]*background:(?!none)/);
   assert.match(styles, /\.theme-keyword \{[^}]*color:var\(--rose-ink\)/);
+  assert.match(styles, /\.theme-keyword \{[^}]*background:none/);
   assert.match(styles, /\.sentence-line \{[^}]*display:block/);
   assert.match(page, /<ThemeText text=\{plan.title\} emphasis=\{plan.titleEmphasis\}/);
   assert.match(page, /<ThemeText text=\{plan.practiceAim\} emphasis=\{plan.aimEmphasis\}/);
