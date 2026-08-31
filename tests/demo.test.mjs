@@ -120,6 +120,7 @@ test("long-form guidance uses restrained visual reading cues", async () => {
   assert.match(styles, /\.theme-keyword \{[^}]*background:none/);
   assert.match(styles, /\.sentence-line \{[^}]*display:block/);
   assert.match(page, /<ThemeText text=\{plan.title\} emphasis=\{plan.titleEmphasis\}/);
+  assert.match(page, /additionalEmphasis=\{plan.titleSecondaryEmphasis\}/);
   assert.match(page, /<ThemeText text=\{plan.practiceAim\} emphasis=\{plan.aimEmphasis\}/);
   for (const field of ["prompt", "context", "prepare", "permission", "starter", "takeaway", "closing"]) {
     assert.ok(page.includes(`<SentenceLines text={plan.${field}}`), `${field} must start each sentence on a new line`);
@@ -139,12 +140,14 @@ test("all seven days highlight selected words without changing their wording", (
       assert.equal(parts[1], emphasis);
       assert.equal(parts.join(""), text);
     }
+    assert.ok(plan.context.includes(plan.contextEmphasis), `Day ${plan.day}: context emphasis must occur in the text`);
     for (const text of [plan.prompt, plan.context, plan.prepare, plan.permission, plan.starter, plan.takeaway, plan.closing]) {
       assert.equal(splitSentences(text).join(""), text, `Day ${plan.day}: line breaks must retain all original wording and punctuation`);
     }
   }
   assert.deepEqual(emphasisParts("不含重点", "缺失"), ["不含重点", "", ""]);
   assert.deepEqual(emphasisParts("完整原文", ""), ["完整原文", "", ""]);
+  assert.equal(dayPlans[1].titleSecondaryEmphasis, "身体");
 });
 
 test("sentence breaks keep closing quotes, questions and ellipses intact", () => {

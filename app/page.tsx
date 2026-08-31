@@ -74,7 +74,11 @@ function JourneyProgress({ current }: { current: PracticePhase }) {
   </nav>;
 }
 
-function ThemeText({ text, emphasis = "" }: { text: string; emphasis?: string }) {
+function ThemeText({ text, emphasis = "", additionalEmphasis = "" }: { text: string; emphasis?: string; additionalEmphasis?: string }) {
+  if (additionalEmphasis) {
+    const [before, keyword, after] = emphasisParts(text, additionalEmphasis);
+    return <>{before}{keyword && <strong className="theme-keyword">{keyword}</strong>}<ThemeText text={after} emphasis={emphasis} /></>;
+  }
   const [before, keyword, after] = emphasisParts(text, emphasis);
   return <>{before}{keyword && <strong className="theme-keyword">{keyword}</strong>}{after}</>;
 }
@@ -432,7 +436,7 @@ export default function Home() {
     {phase === "intro" && <section className="task-page intro-card">
       <JourneyProgress current="intro" />
       <button className="back-button" onClick={showGallery}>← 返回作品册</button>
-      <div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1><ThemeText text={plan.title} emphasis={plan.titleEmphasis} /></h1><p><SentenceLines text={plan.prompt} emphasis={plan.promptEmphasis} /></p>
+      <div className="eyebrow">DAY {padDay(day)} / 07 · {plan.shortTitle}</div><h1><ThemeText text={plan.title} emphasis={plan.titleEmphasis} additionalEmphasis={plan.titleSecondaryEmphasis} /></h1><p><SentenceLines text={plan.prompt} emphasis={plan.promptEmphasis} /></p>
       <div className="time-note"><span>约5–8分钟</span><span>一次只做一步</span><span>随时可以返回</span></div>
       <button className="primary-button" onClick={() => setPhase("ground")}>开始今天的探索 <span>→</span></button>
     </section>}
@@ -447,7 +451,7 @@ export default function Home() {
     {phase === "guide" && <section className="task-page guide-page">
       <JourneyProgress current="guide" />
       <button className="back-button" onClick={() => setPhase("ground")}>← 上一步：呼吸</button>
-      <section className="practice-guide" aria-label="今日练习说明"><span>今天我们在练习</span><h2><ThemeText text={plan.practiceAim} emphasis={plan.aimEmphasis} /></h2><p><SentenceLines text={plan.context} /></p><div className="starter-note"><strong className="hint-label">起笔提示</strong><SentenceLines text={plan.starter} /></div><div className="guide-grid"><div><strong>开始前</strong><p><SentenceLines text={plan.prepare} /></p></div><div><strong>你的选择权</strong><p><SentenceLines text={plan.permission} /></p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p><SentenceLines text="睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。" /></p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section>
+      <section className="practice-guide" aria-label="今日练习说明"><span>今天只练一件事</span><h2><ThemeText text={plan.practiceAim} emphasis={plan.aimEmphasis} /></h2><p><SentenceLines text={plan.context} emphasis={plan.contextEmphasis} /></p><div className="starter-note"><strong className="hint-label">怎么起笔</strong><SentenceLines text={plan.starter} /></div><div className="guide-grid"><div><strong>先准备</strong><p><SentenceLines text={plan.prepare} /></p></div><div><strong>你可以</strong><p><SentenceLines text={plan.permission} /></p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p><SentenceLines text="睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。" /></p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section>
       <button className="primary-button" onClick={() => setPhase("create")}>带着引导去作画 <span>→</span></button>
     </section>}
     {phase === "create" && <section className="task-page creation-page">
