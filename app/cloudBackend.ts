@@ -28,13 +28,22 @@ export const CLOUD_BACKEND_URL = "https://cloud1-5gbfrdn5944358bc.service.tcloud
 
 type BackendEnvelope<T> = { ok: true; data: T } | { ok: false; code: string; message: string };
 
+// Keep displayed terminology consistent even when the deployed API uses older copy.
+const backendMessages: Record<string, string> = {
+  ADMIN_NOT_CONFIGURED: "管理员密码尚未在云函数环境变量中设置。",
+  ADMIN_UNAUTHORIZED: "管理员密码不正确。",
+  PARTICIPANT_NOT_FOUND: "参与编号不存在，请和活动管理员确认。",
+  PARTICIPANT_INACTIVE: "这个参与编号目前已暂停，请联系活动管理员。",
+  DAY_LOCKED: "这一天还没有由管理员开放。",
+};
+
 export class BackendError extends Error {
   code: string;
-  constructor(code: string, message: string) { super(message); this.code = code; }
+  constructor(code: string, message: string) { super(backendMessages[code] ?? message); this.code = code; }
 }
 
 async function request<T>(action: string, payload: Record<string, unknown> = {}): Promise<T> {
-  if (!CLOUD_BACKEND_URL) throw new BackendError("BACKEND_NOT_DEPLOYED", "老师后台正在连接中，请稍后再试。");
+  if (!CLOUD_BACKEND_URL) throw new BackendError("BACKEND_NOT_DEPLOYED", "活动后台正在连接中，请稍后再试。");
   let response: Response;
   try {
     response = await fetch(CLOUD_BACKEND_URL, {

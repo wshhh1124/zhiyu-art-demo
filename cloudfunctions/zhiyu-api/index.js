@@ -31,8 +31,8 @@ function safeEqual(left, right) {
 }
 function requireAdmin(body) {
   const configured = process.env.ADMIN_PASSWORD;
-  if (!configured) throw Object.assign(new Error("老师端密码尚未在云函数环境变量中设置。"), { statusCode: 503, code: "ADMIN_NOT_CONFIGURED" });
-  if (!safeEqual(body.adminPassword, configured)) throw Object.assign(new Error("老师端密码不正确。"), { statusCode: 401, code: "ADMIN_UNAUTHORIZED" });
+  if (!configured) throw Object.assign(new Error("管理员密码尚未在云函数环境变量中设置。"), { statusCode: 503, code: "ADMIN_NOT_CONFIGURED" });
+  if (!safeEqual(body.adminPassword, configured)) throw Object.assign(new Error("管理员密码不正确。"), { statusCode: 401, code: "ADMIN_UNAUTHORIZED" });
 }
 function randomCode(prefix) {
   const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
@@ -65,8 +65,8 @@ function participantView(participant, campaign) {
 async function joinParticipant(body) {
   const code = normalizeCode(body.participantCode);
   const [campaign, participant] = await Promise.all([readCampaign(), readParticipant(code)]);
-  if (!participant) throw Object.assign(new Error("参与编号不存在，请和活动老师确认。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
-  if (participant.status !== "active") throw Object.assign(new Error("这个参与编号目前已暂停，请联系活动老师。"), { statusCode: 403, code: "PARTICIPANT_INACTIVE" });
+  if (!participant) throw Object.assign(new Error("参与编号不存在，请和活动管理员确认。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
+  if (participant.status !== "active") throw Object.assign(new Error("这个参与编号目前已暂停，请联系活动管理员。"), { statusCode: 403, code: "PARTICIPANT_INACTIVE" });
   if (campaign.status !== "active") throw Object.assign(new Error("本期活动暂未开放。"), { statusCode: 403, code: "CAMPAIGN_INACTIVE" });
   const timestamp = now();
   await db.collection(PARTICIPANTS).doc(code).update({ joinedAt: participant.joinedAt || timestamp, lastSeenAt: timestamp });
@@ -82,7 +82,7 @@ async function completeDay(body) {
   const [campaign, participant] = await Promise.all([readCampaign(), readParticipant(code)]);
   if (!participant || participant.status !== "active") throw Object.assign(new Error("参与编号无效或已暂停。"), { statusCode: 403, code: "PARTICIPANT_INACTIVE" });
   const allowedDay = participant.dayOverride ?? clampDay(campaign.currentDay);
-  if (day > allowedDay) throw Object.assign(new Error("这一天还没有由老师开放。"), { statusCode: 403, code: "DAY_LOCKED" });
+  if (day > allowedDay) throw Object.assign(new Error("这一天还没有由管理员开放。"), { statusCode: 403, code: "DAY_LOCKED" });
   const completedDays = [...new Set([...(participant.completedDays || []), day])].sort((a, b) => a - b);
   const completedAt = typeof body.completedAt === "string" ? body.completedAt.slice(0, 40) : now();
   await Promise.all([

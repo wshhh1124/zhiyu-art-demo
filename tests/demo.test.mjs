@@ -3,8 +3,33 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { dayPlans } from "../app/experience.ts";
 import { emphasisParts, splitSentences } from "../app/reading.ts";
+import { BackendError } from "../app/cloudBackend.ts";
 
 const root = new URL("../", import.meta.url);
+
+test("admin copy is neutral across the console, participant pages and API", async () => {
+  for (const path of ["app/TeacherDashboard.tsx", "app/page.tsx", "app/cloudBackend.ts", "cloudfunctions/zhiyu-api/index.js"]) {
+    const source = await readFile(new URL(path, root), "utf8");
+    assert.doesNotMatch(source, /教师|老师/, path);
+  }
+  const dashboard = await readFile(new URL("app/TeacherDashboard.tsx", root), "utf8");
+  assert.equal((dashboard.match(/<h1>后端控制台<\/h1>/g) ?? []).length, 2);
+  assert.match(dashboard, /管理员密码/);
+  assert.match(dashboard, /进入后端控制台/);
+  const messages = {
+    ADMIN_NOT_CONFIGURED: "管理员密码尚未在云函数环境变量中设置。",
+    ADMIN_UNAUTHORIZED: "管理员密码不正确。",
+    PARTICIPANT_NOT_FOUND: "参与编号不存在，请和活动管理员确认。",
+    PARTICIPANT_INACTIVE: "这个参与编号目前已暂停，请联系活动管理员。",
+    DAY_LOCKED: "这一天还没有由管理员开放。",
+  };
+  for (const [code, message] of Object.entries(messages)) {
+    const error = new BackendError(code, "旧版服务提示");
+    assert.equal(error.message, message);
+    assert.equal(error.code, code);
+  }
+  assert.equal(new BackendError("NETWORK_ERROR", "网络暂时不可用").message, "网络暂时不可用");
+});
 
 test("partner demo is gated and keeps participant content device-local", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
@@ -163,7 +188,7 @@ test("pilot flow protects work and requires a complete, backend-synced check-in"
   assert.match(page, /确定清空当前画面吗/);
   assert.match(page, /beforeunload/);
   assert.match(page, /正在完成打卡/);
-  assert.match(page, /Day \{padDay\(day \+ 1\)\} 等待老师开放/);
+  assert.match(page, /Day \{padDay\(day \+ 1\)\} 等待管理员开放/);
   assert.match(page, /下载当前备份/);
   assert.match(page, /导入备份恢复/);
   assert.match(experience, /const DB_VERSION = 2/);
