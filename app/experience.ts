@@ -2,11 +2,14 @@ export type DayPlan = {
   day: number;
   shortTitle: string;
   title: string;
+  titleEmphasis: string;
   practiceAim: string;
+  aimEmphasis: string;
   context: string;
   prepare: string;
   permission: string;
   prompt: string;
+  promptEmphasis: string;
   starter: string;
   reflectionLabel: string;
   titlePlaceholder: string;
@@ -62,7 +65,10 @@ export const dayPlans: DayPlan[] = [
     day: 1,
     shortTitle: "内在天气",
     title: "把此刻的自己画成一种天气",
+    titleEmphasis: "天气",
     practiceAim: "先看见感受，不急着解释感受",
+    aimEmphasis: "看见感受",
+    promptEmphasis: "三种颜色",
     context: "有些感受在变成语言以前，更像一阵气压、一种温度或一片说不清的颜色。今天不追问它从哪里来，只尝试把模糊的内在体验放到画面上，让你和它之间多一点可以观察的距离。",
     prepare: "找一个能安静停留几分钟的位置，看看周围，确认自己此刻身处安全的环境。",
     permission: "你可以只画颜色和线条，不需要回忆任何具体事件，也不需要让别人看懂。",
@@ -77,7 +83,10 @@ export const dayPlans: DayPlan[] = [
     day: 2,
     shortTitle: "身体信号",
     title: "画一张身体正在发送的信号",
+    titleEmphasis: "信号",
     practiceAim: "辨认身体感觉，而不是替它下结论",
+    aimEmphasis: "身体感觉",
+    promptEmphasis: "最有存在感的位置",
     context: "身体常常比语言更早出现紧、热、沉、轻或麻木等感觉，但这些感觉并不自动等于某种情绪或疾病。今天只是练习注意它的位置、方向和强弱，不做诊断，也不要求找到原因。",
     prepare: "双脚接触地面，让呼吸保持自然；闭眼会不舒服的话，就把视线停在面前一点。",
     permission: "你不必扫描疼痛或最不舒服的部位，可以选择一个相对容易靠近的身体感觉。",
@@ -92,7 +101,10 @@ export const dayPlans: DayPlan[] = [
     day: 3,
     shortTitle: "未完的话",
     title: "让一句没有说完的话拥有形状",
+    titleEmphasis: "没有说完的话",
     practiceAim: "让未完成的表达有一个可控的出口",
+    aimEmphasis: "可控的出口",
+    promptEmphasis: "一个关键词",
     context: "一句话没有说完，可能是在保护关系、保护自己，也可能只是当时还没有准备好。把它转换成字、色块和留白，是给表达一个暂时的容器，不等于你必须向任何人说出口。",
     prepare: "请选择一件最近会想起、但强度仍在你可以承受范围内的小事，不要从最痛苦的经历开始。",
     permission: "不写人名、不交代完整故事也可以；你随时可以涂掉文字、换成符号或跳过今天。",
@@ -107,7 +119,10 @@ export const dayPlans: DayPlan[] = [
     day: 4,
     shortTitle: "边界空间",
     title: "为自己造一个可以呼吸的边界",
+    titleEmphasis: "边界",
     practiceAim: "感受选择权，而不是练习把所有人推开",
+    aimEmphasis: "选择权",
+    promptEmphasis: "门由谁打开",
     context: "边界不是永远不变的高墙，而是帮助我们辨认：此刻什么可以靠近、什么需要等等、由谁来决定开门。今天先在画面里试一试，不要求你马上在现实关系中做出改变。",
     prepare: "从一个日常、低风险的场景开始，例如独处时间、聊天频率或个人物品。",
     permission: "你的边界可以坚硬，也可以柔软、透明、会移动；没有一种画法比另一种更健康。",
@@ -122,7 +137,10 @@ export const dayPlans: DayPlan[] = [
     day: 5,
     shortTitle: "关系距离",
     title: "画出一段关系里舒服的距离",
+    titleEmphasis: "舒服的距离",
     practiceAim: "观察距离带来的感受，不评判关系好坏",
+    aimEmphasis: "距离带来的感受",
+    promptEmphasis: "更舒服",
     context: "同一段关系里的舒服距离会随时间和情境变化。靠近不一定代表亲密，拉开也不一定代表拒绝。今天只观察画面里的自己怎样更自在，不用为这段关系得出结论。",
     prepare: "选择一段相对可承受的关系；如果某段关系让你强烈害怕或失控，请不要用它做今天的素材。",
     permission: "你可以用想象中的人物或某一类关系代替真实的人，也可以只画“我”和外部世界。",
@@ -137,7 +155,10 @@ export const dayPlans: DayPlan[] = [
     day: 6,
     shortTitle: "内在支撑",
     title: "画出那些正在托住你的东西",
+    titleEmphasis: "托住你",
     practiceAim: "把微小而真实的支撑变得更容易辨认",
+    aimEmphasis: "真实的支撑",
+    promptEmphasis: "松一口气",
     context: "支撑不一定是宏大的答案，也可能是一杯水、一段路、一句不催促的话。把这些资源具体画出来，不是要求自己积极，而是为需要时多留几个可以找到的入口。",
     prepare: "回想最近一周里一个让身体或心情稍微松动的瞬间，哪怕只有几十秒。",
     permission: "真实存在或想象出来的支撑都可以；如果此刻想不到，也可以画一份你希望获得的支持。",
@@ -152,7 +173,10 @@ export const dayPlans: DayPlan[] = [
     day: 7,
     shortTitle: "内在地图",
     title: "为这七天画一张内在地图",
+    titleEmphasis: "内在地图",
     practiceAim: "把七次表达并置起来，而不是给自己做总结判定",
+    aimEmphasis: "七次表达并置",
+    promptEmphasis: "最想带走",
     context: "回看作品时，我们可能注意到重复、变化和意外，但这些线索不能解释人格，也不能预测未来。第七天只是把七个时刻放在一起，看看此刻的你愿意带走什么。",
     prepare: "先快速浏览前六幅作品，不分析，每幅只选一个最先吸引你注意的元素。",
     permission: "地图不必完整、连贯或积极；可以保留空白，也可以只使用三个最想留下的元素。",

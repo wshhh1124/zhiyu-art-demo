@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { dayPlans } from "../app/experience.ts";
+import { emphasisParts, splitSentences } from "../app/reading.ts";
 
 const root = new URL("../", import.meta.url);
 
@@ -85,12 +87,45 @@ test("all seven days include psychoeducation, participant choice and grounding",
 });
 
 test("long-form guidance uses restrained visual reading cues", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const styles = await readFile(new URL("app/globals.css", root), "utf8");
-  assert.match(styles, /\.intro-card h1 \{[^}]*text-decoration:underline/);
-  assert.match(styles, /\.practice-guide>h2 \{[^}]*color:var\(--teal\)[^}]*text-decoration:underline/);
+  assert.doesNotMatch(styles, /(?:\.intro-card h1|\.practice-guide>h2|\.section-heading h2|\.guide-grid strong)[^{]*\{[^}]*text-decoration:underline/);
+  assert.match(styles, /\.theme-keyword \{[^}]*color:var\(--rose-ink\)/);
+  assert.match(styles, /\.sentence-line \{[^}]*display:block/);
+  assert.match(page, /<ThemeText text=\{plan.title\} emphasis=\{plan.titleEmphasis\}/);
+  assert.match(page, /<ThemeText text=\{plan.practiceAim\} emphasis=\{plan.aimEmphasis\}/);
+  for (const field of ["prompt", "context", "prepare", "permission", "starter", "takeaway", "closing"]) {
+    assert.ok(page.includes(`<SentenceLines text={plan.${field}}`), `${field} must start each sentence on a new line`);
+  }
   assert.match(styles, /\.starter-note \{[^}]*font-style:italic/);
   assert.match(styles, /\.field>span,legend \{[^}]*color:var\(--teal\)/);
   assert.match(styles, /\.field small,legend small \{[^}]*font-style:italic/);
+});
+
+test("all seven days highlight selected words without changing their wording", () => {
+  assert.equal(dayPlans.length, 7);
+  for (const plan of dayPlans) {
+    for (const [text, emphasis] of [[plan.title, plan.titleEmphasis], [plan.practiceAim, plan.aimEmphasis], [plan.prompt, plan.promptEmphasis]]) {
+      assert.ok(emphasis.length > 0 && text.includes(emphasis), `Day ${plan.day}: emphasis must occur in the text`);
+      assert.ok(emphasis.length < text.length / 2, `Day ${plan.day}: highlight only a short phrase`);
+      const parts = emphasisParts(text, emphasis);
+      assert.equal(parts[1], emphasis);
+      assert.equal(parts.join(""), text);
+    }
+    for (const text of [plan.prompt, plan.context, plan.prepare, plan.permission, plan.starter, plan.takeaway, plan.closing]) {
+      assert.equal(splitSentences(text).join(""), text, `Day ${plan.day}: line breaks must retain all original wording and punctuation`);
+    }
+  }
+  assert.deepEqual(emphasisParts("不含重点", "缺失"), ["不含重点", "", ""]);
+  assert.deepEqual(emphasisParts("完整原文", ""), ["完整原文", "", ""]);
+});
+
+test("sentence breaks keep closing quotes, questions and ellipses intact", () => {
+  assert.deepEqual(splitSentences("今天先说到这里。”再看看房间。"), ["今天先说到这里。”", "再看看房间。"]);
+  assert.deepEqual(splitSentences("它像什么？可以停一下！也可以不回答"), ["它像什么？", "可以停一下！", "也可以不回答"]);
+  assert.deepEqual(splitSentences("先写‘其实我想……’再允许画面把字盖住。"), ["先写‘其实我想……’再允许画面把字盖住。"]);
+  assert.deepEqual(splitSentences("第一行。\n第二行；第三行。"), ["第一行。", "第二行；", "第三行。"]);
+  assert.deepEqual(splitSentences(""), []);
 });
 
 test("each daily task is split into a reversible five-page journey", async () => {
