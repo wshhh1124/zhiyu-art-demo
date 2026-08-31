@@ -140,6 +140,7 @@ export default function Home() {
   const [responseMode, setResponseMode] = useState("seen");
   const [responseChosen, setResponseChosen] = useState(false);
   const [note, setNote] = useState("");
+  const [selectedStarterPrompt, setSelectedStarterPrompt] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [shareMode, setShareMode] = useState<ShareMode>("artTitle");
   const [sharePreviewUrl, setSharePreviewUrl] = useState("");
@@ -333,7 +334,7 @@ export default function Home() {
   }
   async function resetFields(targetDay: number) {
     if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有由管理员开放。开放后刷新网页即可进入。`); return; }
-    setDay(targetDay); setPhase("intro"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setEnergyChosen(false); setFocus("色彩"); setFocusChosen(false); setResponseMode("seen"); setResponseChosen(false); setNote(""); setError(""); setSaveStatus("idle"); setCloudSyncStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
+    setDay(targetDay); setPhase("intro"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setEnergyChosen(false); setFocus("色彩"); setFocusChosen(false); setResponseMode("seen"); setResponseChosen(false); setNote(""); setSelectedStarterPrompt(null); setError(""); setSaveStatus("idle"); setCloudSyncStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
     try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
     catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -451,7 +452,7 @@ export default function Home() {
     {phase === "guide" && <section className="task-page guide-page">
       <JourneyProgress current="guide" />
       <button className="back-button" onClick={() => setPhase("ground")}>← 上一步：呼吸</button>
-      <section className="practice-guide" aria-label="今日练习说明"><span>今天只练一件事</span><h2><ThemeText text={plan.practiceAim} emphasis={plan.aimEmphasis} /></h2><p><SentenceLines text={plan.context} emphasis={plan.contextEmphasis} /></p><div className="starter-note"><strong className="hint-label">怎么起笔</strong><SentenceLines text={plan.starter} /></div><div className="guide-grid"><div><strong>先准备</strong><p><SentenceLines text={plan.prepare} /></p></div><div><strong>你可以</strong><p><SentenceLines text={plan.permission} /></p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p><SentenceLines text="睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。" /></p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section>
+      <section className="practice-guide" aria-label="今日练习说明"><span>今天只练一件事</span><h2><ThemeText text={plan.practiceAim} emphasis={plan.aimEmphasis} /></h2><p><SentenceLines text={plan.context} emphasis={plan.contextEmphasis} /></p><div className="starter-note"><strong className="hint-label">任选一题起笔</strong><p>轻点一题，或不选也可以直接作画。</p><div className="starter-prompts" aria-label="任选一个起笔问题">{plan.starterPrompts.map((prompt, index) => <button type="button" key={prompt} className={selectedStarterPrompt === index ? "selected" : ""} aria-pressed={selectedStarterPrompt === index} onClick={() => setSelectedStarterPrompt(index)}><i>{index + 1}</i><span>{prompt}</span></button>)}</div></div><div className="guide-grid"><div><strong>先准备</strong><p><SentenceLines text={plan.prepare} /></p></div><div><strong>你可以</strong><p><SentenceLines text={plan.permission} /></p></div></div><details className="pause-guide"><summary>如果此刻有点难受，先暂停一下</summary><p><SentenceLines text="睁开眼睛，看看周围，依次找到3样看得见的东西、2种听得到的声音和1处身体与地面或椅子的接触。等注意回到当下后，再决定继续、改画轻一点的主题，或今天就停在这里。" /></p><small>如果不适持续或明显加重，请停止练习，并联系可信任的人或合适的专业支持。</small></details></section>
       <button className="primary-button" onClick={() => setPhase("create")}>带着引导去作画 <span>→</span></button>
     </section>}
     {phase === "create" && <section className="task-page creation-page">

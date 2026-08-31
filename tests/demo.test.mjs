@@ -122,10 +122,13 @@ test("long-form guidance uses restrained visual reading cues", async () => {
   assert.match(page, /<ThemeText text=\{plan.title\} emphasis=\{plan.titleEmphasis\}/);
   assert.match(page, /additionalEmphasis=\{plan.titleSecondaryEmphasis\}/);
   assert.match(page, /<ThemeText text=\{plan.practiceAim\} emphasis=\{plan.aimEmphasis\}/);
+  assert.match(page, /任选一题起笔/);
+  assert.match(page, /plan\.starterPrompts\.map/);
   for (const field of ["prompt", "context", "prepare", "permission", "starter", "takeaway", "closing"]) {
     assert.ok(page.includes(`<SentenceLines text={plan.${field}}`), `${field} must start each sentence on a new line`);
   }
-  assert.match(styles, /\.starter-note \{[^}]*font-style:italic/);
+  assert.match(styles, /\.starter-note>p \{[^}]*font-style:italic/);
+  assert.match(styles, /\.starter-prompts button\.selected \{[^}]*border-color:var\(--teal\)/);
   assert.match(styles, /\.field>span,legend \{[^}]*color:var\(--teal\)/);
   assert.match(styles, /\.field small,legend small \{[^}]*font-style:italic/);
 });
@@ -141,6 +144,7 @@ test("all seven days highlight selected words without changing their wording", (
       assert.equal(parts.join(""), text);
     }
     assert.ok(plan.context.includes(plan.contextEmphasis), `Day ${plan.day}: context emphasis must occur in the text`);
+    assert.equal(plan.starterPrompts.length, 3, `Day ${plan.day}: needs three optional starter prompts`);
     for (const text of [plan.prompt, plan.context, plan.prepare, plan.permission, plan.starter, plan.takeaway, plan.closing]) {
       assert.equal(splitSentences(text).join(""), text, `Day ${plan.day}: line breaks must retain all original wording and punctuation`);
     }

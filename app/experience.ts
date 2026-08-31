@@ -13,6 +13,7 @@ export type DayPlan = {
   prompt: string;
   promptEmphasis: string;
   starter: string;
+  starterPrompts: [string, string, string];
   reflectionLabel: string;
   titlePlaceholder: string;
   takeaway: string;
@@ -77,6 +78,7 @@ export const dayPlans: DayPlan[] = [
     permission: "只画颜色和线条即可；不必回忆事件，也不用给别人看。",
     prompt: "不用画得像，也不用先想明白。从色盘里选三种颜色，用线条、色块或随手的形状，画出“此刻待在我身体里的天气”。",
     starter: "先选一种最明显的感受颜色。",
+    starterPrompts: ["哪一种颜色最像它？", "它更像线条、色块，还是一团雾？", "它在身体里占多大地方？"],
     reflectionLabel: "给今天的天气取一个名字",
     titlePlaceholder: "例如：雨停之前、安静的漩涡……",
     takeaway: "练习把模糊的内在体验变成可以被看见的形状。",
@@ -97,6 +99,7 @@ export const dayPlans: DayPlan[] = [
     permission: "避开最不舒服处也可以，只选一个容易靠近的感觉。",
     prompt: "闭眼停留三个呼吸，找到此刻身体里最有存在感的位置。用颜色、方向和轻重画出它的感觉，不需要画人体。",
     starter: "它像一团、一道线，还是一种温度？",
+    starterPrompts: ["它像什么形状？", "它在向里缩、向外顶，还是停在原地？", "它更像冷、热、沉、轻，还是别的？"],
     reflectionLabel: "为这个身体信号取一个名字",
     titlePlaceholder: "例如：肩膀上的小石头、胸口的风……",
     takeaway: "在解释之前，先辨认身体已经知道的事情。",
@@ -116,6 +119,7 @@ export const dayPlans: DayPlan[] = [
     permission: "不写名字、不讲完整故事也可以；随时可涂掉或跳过。",
     prompt: "想起一句最近常在心里出现、却没有说完的话。不要写出具体人名，把这句话拆成颜色、笔画和留白。你可以覆盖、涂改，也可以只保留一个关键词。",
     starter: "从“其实我想……”开始，再让画面盖住它。",
+    starterPrompts: ["这句话最想从哪里开始？", "哪一个词最不想露出来？", "它需要被写清，还是被盖住？"],
     reflectionLabel: "这句话今天叫什么",
     titlePlaceholder: "例如：差一点说出口、被涂掉的但是……",
     takeaway: "让未完成的表达有一个安全出口，而不是逼自己立刻说清楚。",
@@ -135,6 +139,7 @@ export const dayPlans: DayPlan[] = [
     permission: "它可以坚硬、柔软或会移动，没有标准画法。",
     prompt: "画一个属于你的空间。它可以有墙、门、窗、桥或柔软的边缘。决定什么可以进来、什么先留在外面，以及门由谁打开。",
     starter: "边界可以是一扇由你开合的门。",
+    starterPrompts: ["它的边缘是硬的、软的，还是会移动？", "哪里可以进来？哪里先等等？", "这扇门由谁打开？"],
     reflectionLabel: "为这个空间取一个名字",
     titlePlaceholder: "例如：只由我开门的房间、会呼吸的篱笆……",
     takeaway: "体验边界的核心不是拒绝，而是保留选择靠近与离开的权利。",
@@ -154,6 +159,7 @@ export const dayPlans: DayPlan[] = [
     permission: "可以用想象人物，或只画“我”和外部世界。",
     prompt: "用两个形状代表“我”和“某个重要的人”，不写名字。移动它们的大小、方向和距离，直到画面里的你感觉稍微更舒服。",
     starter: "先画“我”，再决定另一个形状该离多远。",
+    starterPrompts: ["“我”在画面里要多大？", "另一个形状离多远刚好？", "中间需要一条线、一扇门还是一段空白？"],
     reflectionLabel: "为这段距离取一个名字",
     titlePlaceholder: "例如：靠近但不淹没、隔着一条小河……",
     takeaway: "关系不是只有靠近或离开，还可以协商一种刚刚好的距离。",
@@ -173,6 +179,7 @@ export const dayPlans: DayPlan[] = [
     permission: "真实或想象的支撑都可以；想不到就画你希望有的。",
     prompt: "回想最近一个让你稍微松一口气的时刻。把其中的物件、声音、动作或陪伴画成一个支撑系统，真实或想象都可以。",
     starter: "从一杯水、一束光或一次呼吸开始。",
+    starterPrompts: ["最近什么让你稍微松一口气？", "它更像物件、光，还是一个动作？", "把它放在哪里，会更容易靠近？"],
     reflectionLabel: "为这份支撑取一个名字",
     titlePlaceholder: "例如：不会催我的角落、掌心里的灯……",
     takeaway: "把资源具体化，困难出现时更容易重新找到它。",
@@ -192,6 +199,7 @@ export const dayPlans: DayPlan[] = [
     permission: "不必完整、连贯或积极；可以只留三个元素。",
     prompt: "回看前六幅作品，选出反复出现或最想带走的颜色、线条与形状，把它们重新放进同一张画里。它不是总结答案，而是一张此刻的自我地图。",
     starter: "可以从三个元素开始：我要保留的、我要松开的、我要继续靠近的。",
+    starterPrompts: ["哪一个元素想被保留？", "哪一个可以先松开？", "还有什么想继续靠近？"],
     reflectionLabel: "为这张内在地图取一个名字",
     titlePlaceholder: "例如：我正在经过的地方、七种天气之后……",
     takeaway: "把七次表达并置，看见变化、重复与仍然开放的问题。",
