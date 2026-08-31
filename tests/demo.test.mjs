@@ -207,10 +207,13 @@ test("teacher backend controls participant codes, open day and completion metada
   assert.match(dashboard, /查看并控制所有参与编号/);
   assert.match(dashboard, /已加入/);
   assert.match(dashboard, /清空记录/);
+  assert.match(dashboard, /删除编号/);
   assert.match(api, /process\.env\.ADMIN_PASSWORD/);
   assert.match(api, /PARTICIPANT_NOT_FOUND/);
   assert.match(api, /DAY_LOCKED/);
   assert.match(api, /completedDays/);
   assert.match(api, /admin\.resetParticipant/);
+  assert.match(api, /admin\.deleteParticipant/);
+  assert.match(api, /db\.collection\(PARTICIPANTS\)\.doc\(code\)\.remove\(\)/);
   assert.doesNotMatch(api, /image|feelings|note/);
 });

@@ -161,6 +161,17 @@ async function adminResetParticipant(body) {
   ]);
   return adminOverview(body);
 }
+async function adminDeleteParticipant(body) {
+  requireAdmin(body);
+  const code = normalizeCode(body.participantCode);
+  const participant = await readParticipant(code);
+  if (!participant) throw Object.assign(new Error("参与编号不存在。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
+  await Promise.all([
+    db.collection(CHECKINS).where({ participantCode: code }).remove(),
+    db.collection(PARTICIPANTS).doc(code).remove(),
+  ]);
+  return adminOverview(body);
+}
 
 const actions = {
   "participant.join": joinParticipant,
@@ -172,6 +183,7 @@ const actions = {
   "admin.addCode": adminAddCode,
   "admin.updateParticipant": adminUpdateParticipant,
   "admin.resetParticipant": adminResetParticipant,
+  "admin.deleteParticipant": adminDeleteParticipant,
 };
 
 function corsHeaders(req) {
