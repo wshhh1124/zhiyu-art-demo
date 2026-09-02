@@ -186,6 +186,10 @@ test("pilot flow protects work and requires a complete, backend-synced check-in"
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
   assert.match(page, /参与编号/);
+  assert.match(page, /正在恢复.*上次进度/s);
+  assert.match(page, /const savedProfile = await getParticipantProfile\(\)/);
+  assert.match(page, /refreshParticipantAccess\(savedProfile\.participantId\)/);
+  assert.match(page, /已自动恢复参与编号/);
   assert.doesNotMatch(page, /发送打卡回执/);
   assert.match(page, /完成打卡 · 后端已记录/);
   assert.match(page, /completionRequirements/);

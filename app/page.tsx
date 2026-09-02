@@ -20,6 +20,7 @@ import {
 import TeacherDashboard from "./TeacherDashboard";
 import { emphasisParts, splitSentences } from "./reading";
 import { joinWithParticipantCode, refreshParticipantAccess, syncParticipantCompletion } from "./cloudBackend";
+import type { ParticipantAccess } from "./cloudBackend";
 
 const palette = [
   "#1F2933", "#53606B", "#9AA3AA", "#D7DADD", "#F4EFE8", "#FFFFFF",
@@ -111,6 +112,7 @@ export default function Home() {
   const undoSnapshot = useRef<UndoSnapshot | null>(null);
   const draftTimer = useRef<number | null>(null);
   const [teacherMode, setTeacherMode] = useState(false);
+  const [restoringParticipant, setRestoringParticipant] = useState(true);
   const [unlocked, setUnlocked] = useState(false);
   const [participantIdInput, setParticipantIdInput] = useState("");
   const [profile, setProfile] = useState<ParticipantProfile | null>(null);
@@ -170,7 +172,37 @@ export default function Home() {
   }, [records]);
 
   useEffect(() => {
-    setTeacherMode(new URLSearchParams(window.location.search).has("teacher"));
+    let cancelled = false;
+    const isTeacherMode = new URLSearchParams(window.location.search).has("teacher");
+    setTeacherMode(isTeacherMode);
+    if (isTeacherMode) { setRestoringParticipant(false); return; }
+
+    async function restoreParticipant() {
+      try {
+        const savedProfile = await getParticipantProfile();
+        if (!savedProfile || cancelled) return;
+        setParticipantIdInput(savedProfile.participantId);
+        const [access, saved] = await Promise.all([
+          refreshParticipantAccess(savedProfile.participantId),
+          getDayRecords(),
+        ]);
+        if (cancelled) return;
+        setProfile(savedProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setUnlocked(true);
+        const next = dayPlans.find((item) => item.day <= access.currentDay && !saved.some((record) => record.day === item.day))?.day;
+        if (saved.length || !next) { setDay(next ?? Math.min(access.currentDay, 7)); setPhase("gallery"); }
+        else { setDay(next); setPhase("intro"); }
+        setStorageNote(`已自动恢复参与编号 ${access.code} 和这台设备上的作品进度。`);
+      } catch (caught) {
+        if (cancelled) return;
+        const message = caught instanceof Error ? caught.message : "暂时无法连接活动后台。";
+        setCodeError(`没有自动进入：${message} 你可以稍后点击“验证编号并进入”重试。`);
+      } finally {
+        if (!cancelled) setRestoringParticipant(false);
+      }
+    }
+
+    void restoreParticipant();
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -200,6 +232,16 @@ export default function Home() {
 
   useEffect(() => () => { if (draftTimer.current) window.clearTimeout(draftTimer.current); }, []);
 
+  async function enterExperience(access: ParticipantAccess, activeProfile: ParticipantProfile, saved: DayRecord[], restoreMessage = "") {
+    await saveParticipantProfile(activeProfile);
+    setProfile(activeProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setUnlocked(true);
+    const availableDay = access.currentDay;
+    const next = dayPlans.find((item) => item.day <= availableDay && !saved.some((record) => record.day === item.day))?.day;
+    if (saved.length || !next) { setDay(next ?? Math.min(availableDay, 7)); setPhase("gallery"); }
+    else await resetFields(next);
+    if (restoreMessage) setStorageNote(restoreMessage);
+  }
+
   async function unlock(event: React.FormEvent) {
     event.preventDefault();
     const cleanParticipantId = participantIdInput.trim();
@@ -213,11 +255,7 @@ export default function Home() {
       const activeProfile: ParticipantProfile = existingProfile
         ? existingProfile
         : { id: "profile", participantId: access.code, startedAt: earliestCompletion ?? access.joinedAt ?? new Date().toISOString() };
-      await saveParticipantProfile(activeProfile); setProfile(activeProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setUnlocked(true);
-      const availableDay = access.currentDay;
-      const next = dayPlans.find((item) => item.day <= availableDay && !saved.some((record) => record.day === item.day))?.day;
-      if (saved.length || !next) { setDay(next ?? Math.min(availableDay, 7)); setPhase("gallery"); }
-      else await resetFields(next);
+      await enterExperience(access, activeProfile, saved);
     }
     catch (caught) { setCodeError(caught instanceof Error ? caught.message : "暂时无法验证参与编号，请稍后重试。"); }
   }
@@ -429,6 +467,7 @@ export default function Home() {
   }
 
   if (teacherMode) return <TeacherDashboard />;
+  if (restoringParticipant) return <main className="gate-shell"><section className="gate-card" aria-live="polite"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>正在恢复<br />上次进度</h1><p>正在读取这台设备上保存的参与编号和作品，请稍候……</p></section></main>;
   if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>管理员会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>这是一项心理教育与自我探索活动，不提供诊断或治疗。任何一天都可以暂停、跳过或不公开作品。</small></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => { setParticipantIdInput(event.target.value.toUpperCase()); setSwitchCode(""); setCodeError(""); }} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入管理员单独发给你的编号，不要填写真实姓名。</small>{codeError && <small role="alert">{codeError}</small>}{switchCode && <div className="switch-code-actions"><button type="button" className="outline" onClick={() => clearLocalAndSwitch(true)}>先备份，再更换编号</button><button type="button" className="danger" onClick={() => clearLocalAndSwitch(false)}>直接清除旧记录并更换</button></div>}<button type="submit">验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台只记录参与编号、开放进度和完成时间，不上传你的作品、感受词或觉察文字。</span></div></section></main>;
 
   return <main className="app-shell">
