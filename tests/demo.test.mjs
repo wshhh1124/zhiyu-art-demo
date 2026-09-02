@@ -191,7 +191,20 @@ test("each daily task is split into a reversible five-page journey", async () =>
 test("pilot flow protects work and requires a complete, backend-synced check-in", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
   assert.match(page, /参与编号/);
+  assert.match(page, /正式参与说明 · 请先阅读/);
+  assert.match(page, /本期面向18岁及以上成年人/);
+  assert.match(page, /不替代心理咨询、诊断、治疗或医疗服务/);
+  assert.match(page, /群聊无法保证绝对保密/);
+  assert.match(page, /不提供24小时危机干预/);
+  assert.match(page, /工作人员回复时间以群公告为准/);
+  assert.match(page, /需要删除后台编号和完成记录/);
+  assert.match(page, /我已阅读并理解参与说明/);
+  assert.match(page, /请先阅读并确认参与说明/);
+  assert.match(page, /disabled=\{!participationAccepted\}/);
+  assert.match(styles, /\.participation-notice/);
+  assert.match(styles, /\.participation-consent/);
   assert.match(page, /正在恢复.*上次进度/s);
   assert.match(page, /const savedProfile = await getParticipantProfile\(\)/);
   assert.match(page, /refreshParticipantAccess\(savedProfile\.participantId\)/);
