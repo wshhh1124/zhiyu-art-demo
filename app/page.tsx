@@ -4,7 +4,6 @@ import { PointerEvent, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArtworkDraft,
   clearExperienceData,
-  createExperienceBackup,
   DayRecord,
   dayPlans,
   deleteArtworkDraft,
@@ -12,7 +11,6 @@ import {
   getDayRecords,
   getParticipantProfile,
   ParticipantProfile,
-  restoreExperienceBackup,
   saveArtworkDraft,
   saveDayRecord,
   saveParticipantProfile,
@@ -90,7 +88,6 @@ function SentenceLines({ text, emphasis = "" }: { text: string; emphasis?: strin
 
 function padDay(day: number) { return String(day).padStart(2, "0"); }
 function downloadDataUrl(url: string, filename: string) { const link = document.createElement("a"); link.href = url; link.download = filename; link.click(); }
-function downloadTextFile(content: string, filename: string) { const url = URL.createObjectURL(new Blob([content], { type: "application/json;charset=utf-8" })); downloadDataUrl(url, filename); window.setTimeout(() => URL.revokeObjectURL(url), 1000); }
 function loadImage(src: string) { return new Promise<HTMLImageElement>((resolve, reject) => { const image = new Image(); image.onload = () => resolve(image); image.onerror = reject; image.src = src; }); }
 function drawImageContain(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number) {
   const scale = Math.min(width / image.width, height / image.height);
@@ -101,10 +98,6 @@ function wrapText(context: CanvasRenderingContext2D, text: string, x: number, y:
   const chars = [...text]; let line = ""; let lineIndex = 0;
   for (const char of chars) { const test = line + char; if (context.measureText(test).width > maxWidth && line) { context.fillText(line, x, y + lineIndex * lineHeight); line = char; lineIndex += 1; if (lineIndex >= maxLines) return; } else line = test; }
   if (lineIndex < maxLines) context.fillText(line, x, y + lineIndex * lineHeight);
-}
-function localDateKey(value: string | Date) {
-  const date = typeof value === "string" ? new Date(value) : value;
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -252,7 +245,7 @@ export default function Home() {
     try {
       const access = await joinWithParticipantCode(cleanParticipantId);
       const saved = await getDayRecords(); const existingProfile = await getParticipantProfile();
-      if (existingProfile && existingProfile.participantId !== access.code) { setSwitchCode(access.code); setCodeError(`这台设备保存着旧编号 ${existingProfile.participantId} 的本机记录。你可以先下载备份，再清除旧记录并改用 ${access.code}。`); return; }
+      if (existingProfile && existingProfile.participantId !== access.code) { setSwitchCode(access.code); setCodeError(`这台设备保存着旧编号 ${existingProfile.participantId} 的本机记录。如需改用 ${access.code}，必须先清除旧编号在这台设备上的作品和草稿。`); return; }
       const earliestCompletion = [...saved].sort((a, b) => a.completedAt.localeCompare(b.completedAt))[0]?.completedAt;
       const activeProfile: ParticipantProfile = existingProfile
         ? existingProfile
@@ -261,16 +254,12 @@ export default function Home() {
     }
     catch (caught) { setCodeError(caught instanceof Error ? caught.message : "暂时无法验证参与编号，请稍后重试。"); }
   }
-  async function clearLocalAndSwitch(downloadBackup: boolean) {
+  async function clearLocalAndSwitch() {
     if (!switchCode) return;
-    const confirmed = window.confirm(`将永久清除这台设备上旧编号的作品、草稿和本机记录，然后改用 ${switchCode}。${downloadBackup ? "网页会先下载一份备份。" : "清除后无法恢复。"}确定继续吗？`);
+    const confirmed = window.confirm(`将永久清除这台设备上旧编号的作品、草稿和本机记录，然后改用 ${switchCode}。清除后无法恢复，确定继续吗？`);
     if (!confirmed) return;
     setCodeError("");
     try {
-      if (downloadBackup) {
-        const backup = await createExperienceBackup();
-        downloadTextFile(JSON.stringify(backup), `织屿旧记录备份-${localDateKey(new Date())}.json`);
-      }
       const access = await joinWithParticipantCode(switchCode);
       await clearExperienceData();
       const activeProfile: ParticipantProfile = { id: "profile", participantId: access.code, startedAt: access.joinedAt ?? new Date().toISOString() };
@@ -313,7 +302,7 @@ export default function Home() {
       const canvas = canvasRef.current; if (!canvas) return;
       const draft: ArtworkDraft = { day, image: canvas.toDataURL("image/jpeg", .82), importedArtwork: importedOverride, updatedAt: new Date().toISOString() };
       try { await saveArtworkDraft(draft); setStorageNote("当前画面已自动保存为本机草稿。"); }
-      catch { setStorageNote("自动保存草稿失败，请先下载或导出备份保存作品。"); }
+      catch { setStorageNote("自动保存草稿失败，请先完成本次作品，并及时保存作品图片。"); }
     }, 450);
   }
   function begin(event: PointerEvent<HTMLCanvasElement>) { const context = canvasRef.current?.getContext("2d"); if (!context) return; captureUndoSnapshot(); drawing.current = true; setStarted(true); event.currentTarget.setPointerCapture(event.pointerId); const current = point(event); context.beginPath(); context.moveTo(current.x, current.y); }
@@ -368,7 +357,7 @@ export default function Home() {
     try {
       await saveDayRecord(record); deleteArtworkDraft(day).catch(() => undefined);
       setRecords((current) => [...current.filter((item) => item.day !== day), record]); setSaveStatus("saved"); setStorageNote(`Day ${padDay(day)} 已确认保存在本机，正在同步完成记录。`); setPhase("result");
-    } catch { setSaveStatus("failed"); setError("保存失败，作品尚未进入作品册。请重试，或先返回画布下载备份。"); return; }
+    } catch { setSaveStatus("failed"); setError("保存失败，作品尚未进入作品册。请保持当前页面并重新尝试。"); return; }
     void syncCompletion(record);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -376,7 +365,7 @@ export default function Home() {
     if (targetDay > maxUnlockedDay && !records.some((record) => record.day === targetDay)) { setStorageNote(`Day ${padDay(targetDay)} 还没有由管理员开放。开放后刷新网页即可进入。`); return; }
     setDay(targetDay); setPhase("intro"); setStarted(false); setImportedArtwork(false); setPreviewUrl(""); setTitle(""); setFeelings([]); setEnergy(3); setEnergyChosen(false); setFocus("色彩"); setFocusChosen(false); setResponseMode("seen"); setResponseChosen(false); setNote(""); setSelectedStarterPrompt(null); setError(""); setSaveStatus("idle"); setCloudSyncStatus("idle"); setSharePreviewUrl(""); setShareHint(""); setShareMode("artTitle"); setSaveImagePreview(null); undoSnapshot.current = null; setUndoAvailable(false);
     try { const draft = await getArtworkDraft(targetDay); if (draft) { setPreviewUrl(draft.image); setStarted(true); setImportedArtwork(draft.importedArtwork); setStorageNote(`已恢复 Day ${padDay(targetDay)} 的本机草稿。`); } }
-    catch { setStorageNote("没有读到本机草稿，可以继续创作；完成后建议导出备份。"); }
+    catch { setStorageNote("没有读到本机草稿，可以继续创作。"); }
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function openDay(targetDay: number) {
@@ -392,20 +381,6 @@ export default function Home() {
   function openImageSavePreview(url: string, label: string) {
     if (!url) return;
     setSaveImagePreview({ url, label });
-  }
-
-  async function exportBackup() {
-    try { const backup = await createExperienceBackup(); downloadTextFile(JSON.stringify(backup), `织屿7日作品备份-${profile?.participantId || "未编号"}-${localDateKey(new Date())}.json`); setStorageNote("备份已经下载。请保留这个文件；换设备时可在作品册中导入恢复。"); }
-    catch { setError("备份生成失败，请先逐日下载作品图片。"); }
-  }
-  async function importBackup(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (!file) return;
-    if (file.size > 60 * 1024 * 1024) { setError("备份文件超过60MB，暂时无法导入。"); return; }
-    try {
-      const backup = await restoreExperienceBackup(await file.text()); const restoredProfile = backup.profile;
-      setRecords(backup.days); if (restoredProfile) { setProfile(restoredProfile); setParticipantIdInput(restoredProfile.participantId); }
-      setPhase("gallery"); setError(""); setStorageNote(`已恢复 ${backup.days.length} 天作品与本机草稿。`);
-    } catch { setError("这不是有效的织屿作品备份文件，请重新选择之前下载的 JSON 文件。"); }
   }
 
   async function makeShareCard() {
@@ -470,7 +445,7 @@ export default function Home() {
 
   if (teacherMode) return <TeacherDashboard />;
   if (restoringParticipant) return <main className="gate-shell"><section className="gate-card" aria-live="polite"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>正在恢复<br />上次进度</h1><p>正在读取这台设备上保存的参与编号和作品，请稍候……</p></section></main>;
-  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>管理员会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>任何一天都可以暂停、跳过或不公开作品。</small></details><details className="participation-notice" open><summary>正式参与说明 · 请先阅读</summary><div><section><strong>参与范围与活动性质</strong><p>本期面向18岁及以上成年人。这是一项心理教育与自我探索活动，不替代心理咨询、诊断、治疗或医疗服务。</p></section><section><strong>你的选择权</strong><p>你可以随时跳过、暂停或退出，不必解释原因；完成天数不代表心理健康水平。</p></section><section><strong>数据与作品保存</strong><p>作品和觉察文字只保存在当前浏览器。后台仅记录参与编号、开放进度、完成日期和最近活动时间。换设备、清除网站数据或使用无痕模式可能使本机作品无法恢复，建议定期下载备份。</p></section><section><strong>社群分享边界</strong><p>不要求在群内公开作品。若自主分享，请避免透露可识别信息；请勿截图或转发他人内容，但群聊无法保证绝对保密。</p></section><section><strong>出现明显不适时</strong><p>如果练习引发强烈或持续不适、自伤或伤人想法，或你正处于紧急危险中，请立即停止，联系可信任的人、当地紧急服务或合适的专业支持。本活动不提供24小时危机干预，工作人员回复时间以群公告为准。</p></section><section><strong>删除记录</strong><p>需要删除后台编号和完成记录时，请联系活动管理员。管理员无法远程查看或删除你手机中的本机作品。</p></section></div></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => { setParticipantIdInput(event.target.value.toUpperCase()); setSwitchCode(""); setCodeError(""); }} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入管理员单独发给你的编号，不要填写真实姓名。</small><label className="participation-consent"><input type="checkbox" checked={participationAccepted} onChange={(event) => { setParticipationAccepted(event.target.checked); setCodeError(""); }} required /><span><strong>我已阅读并理解参与说明</strong><small>我确认已满18周岁，并理解这不是心理咨询或治疗。</small></span></label>{codeError && <small role="alert">{codeError}</small>}{switchCode && <div className="switch-code-actions"><button type="button" className="outline" onClick={() => clearLocalAndSwitch(true)}>先备份，再更换编号</button><button type="button" className="danger" onClick={() => clearLocalAndSwitch(false)}>直接清除旧记录并更换</button></div>}<button type="submit" disabled={!participationAccepted}>验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台只记录参与编号、开放进度和完成时间，不上传你的作品、感受词或觉察文字。</span></div></section></main>;
+  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>管理员会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>任何一天都可以暂停、跳过或不公开作品。</small></details><details className="participation-notice" open><summary>正式参与说明 · 请先阅读</summary><div><section><strong>参与范围与活动性质</strong><p>本期面向18岁及以上成年人。这是一项心理教育与自我探索活动，不替代心理咨询、诊断、治疗或医疗服务。</p></section><section><strong>你的选择权</strong><p>你可以随时跳过、暂停或退出，不必解释原因；完成天数不代表心理健康水平。</p></section><section><strong>数据与作品保存</strong><p>作品和觉察文字只保存在当前浏览器。后台仅记录参与编号、开放进度、完成日期和最近活动时间。换设备、清除网站数据或使用无痕模式可能使本机作品无法恢复；建议始终使用同一台设备和浏览器完成练习，并在每天结束后保存作品图片。</p></section><section><strong>社群分享边界</strong><p>不要求在群内公开作品。若自主分享，请避免透露可识别信息；请勿截图或转发他人内容，但群聊无法保证绝对保密。</p></section><section><strong>出现明显不适时</strong><p>如果练习引发强烈或持续不适、自伤或伤人想法，或你正处于紧急危险中，请立即停止，联系可信任的人、当地紧急服务或合适的专业支持。本活动不提供24小时危机干预，工作人员回复时间以群公告为准。</p></section><section><strong>删除记录</strong><p>需要删除后台编号和完成记录时，请联系活动管理员。管理员无法远程查看或删除你手机中的本机作品。</p></section></div></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => { setParticipantIdInput(event.target.value.toUpperCase()); setSwitchCode(""); setCodeError(""); }} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入管理员单独发给你的编号，不要填写真实姓名。</small><label className="participation-consent"><input type="checkbox" checked={participationAccepted} onChange={(event) => { setParticipationAccepted(event.target.checked); setCodeError(""); }} required /><span><strong>我已阅读并理解参与说明</strong><small>我确认已满18周岁，并理解这不是心理咨询或治疗。</small></span></label>{codeError && <small role="alert">{codeError}</small>}{switchCode && <div className="switch-code-actions"><button type="button" className="danger" onClick={clearLocalAndSwitch}>清除旧记录并更换编号</button></div>}<button type="submit" disabled={!participationAccepted}>验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台只记录参与编号、开放进度和完成时间，不上传你的作品、感受词或觉察文字。</span></div></section></main>;
 
   return <main className="app-shell">
     <header className="topbar"><button className="brand-mark" onClick={showGallery}>织屿心理</button><div><span>{completed}/7 已完成 · 开放至 Day {maxUnlockedDay}</span><button onClick={refreshCloudAccess}>刷新开放</button><button onClick={showGallery}>7日作品册</button></div></header>
@@ -520,8 +495,7 @@ export default function Home() {
       <div className="eyebrow">参与编号 {profile?.participantId} · 管理员已开放至 Day {maxUnlockedDay}</div><h1>七天，不是七份作业</h1><p className="gallery-intro">每一天只留下一个当时的切片。未来章节由管理员开放；作品不自动上传，由你决定分享范围。</p>
       <div className="progress-track"><i style={{ width: `${completed / 7 * 100}%` }} /></div><div className="progress-copy"><span>已完成 {completed} 天</span><span>{allComplete ? "可以收束了" : `还剩 ${7 - completed} 天`}</span></div>
       <div className="gallery-grid">{dayPlans.map((item) => { const record = records.find((saved) => saved.day === item.day); const locked = !record && item.day > maxUnlockedDay; return <button key={item.day} disabled={locked} className={record ? "complete" : locked ? "locked" : "pending"} onClick={() => openDay(item.day)}>{record ? <img src={record.image} alt={`Day ${item.day} 作品`} /> : <div className="empty-art"><span>{locked ? "锁" : padDay(item.day)}</span><i /></div>}<span>DAY {padDay(item.day)} · {item.shortTitle}</span><strong>{record ? `《${record.title}》` : locked ? `第 ${item.day} 天开放` : "等待你的这一笔"}</strong></button>; })}</div>
-      <div className="backup-card"><span>跨设备备份</span><h2>把当前进度保存成一个文件</h2><p>备份包含作品、觉察记录、完成时间和未完成草稿。请妥善保管，不要转发给无关的人。</p><div className="backup-actions"><button onClick={exportBackup}>下载当前备份</button><label><input type="file" accept="application/json,.json" onChange={importBackup} />导入备份恢复</label></div></div>
-      {allComplete ? <div className="day-seven-summary"><span>DAY 07 · 收束</span><h2>把七幅作品放在一起看看</h2><p>你在七天里记录过的感受词包括：<strong>{feelingSummary.join("、") || "尚未命名"}</strong>。这只是你自述内容的并置，不是心理分析。</p><ul><li>哪一个元素在不同作品里再次出现？</li><li>哪一天的自己最让现在的你意外？</li><li>接下来，你想保留、松开或继续靠近什么？</li></ul><button className="card-action" onClick={downloadArchive}>下载7日个人作品档案</button></div> : nextIncompleteDay <= maxUnlockedDay ? <button className="primary-button" onClick={() => resetFields(nextIncompleteDay)}>继续 Day {padDay(nextIncompleteDay)} <span>→</span></button> : <div className="locked-next"><strong>今天开放的章节已经完成</strong><span>管理员开放下一章后，点击顶部“刷新开放”即可继续。你可以先下载备份或回看作品。</span></div>}
+      {allComplete ? <div className="day-seven-summary"><span>DAY 07 · 收束</span><h2>把七幅作品放在一起看看</h2><p>你在七天里记录过的感受词包括：<strong>{feelingSummary.join("、") || "尚未命名"}</strong>。这只是你自述内容的并置，不是心理分析。</p><ul><li>哪一个元素在不同作品里再次出现？</li><li>哪一天的自己最让现在的你意外？</li><li>接下来，你想保留、松开或继续靠近什么？</li></ul><button className="card-action" onClick={downloadArchive}>下载7日个人作品档案</button></div> : nextIncompleteDay <= maxUnlockedDay ? <button className="primary-button" onClick={() => resetFields(nextIncompleteDay)}>继续 Day {padDay(nextIncompleteDay)} <span>→</span></button> : <div className="locked-next"><strong>今天开放的章节已经完成</strong><span>管理员开放下一章后，点击顶部“刷新开放”即可继续。你可以先回看或保存今天的作品。</span></div>}
     </section>}
     {saveImagePreview && <div className="image-save-layer" role="dialog" aria-modal="true" aria-label={`保存${saveImagePreview.label}`} onClick={() => setSaveImagePreview(null)}>
       <div className="image-save-dialog" onClick={(event) => event.stopPropagation()}>

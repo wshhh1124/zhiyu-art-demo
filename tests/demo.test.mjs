@@ -37,7 +37,7 @@ test("partner demo is gated and keeps participant content device-local", async (
   assert.match(page, /joinWithParticipantCode/);
   assert.match(page, /验证编号并进入/);
   assert.match(page, /作品只保存在当前设备/);
-  assert.match(page, /直接清除旧记录并更换/);
+  assert.match(page, /清除旧记录并更换编号/);
   assert.match(page, /clearExperienceData/);
   assert.match(page, /不会上传到织屿/);
   assert.doesNotMatch(page, /fetch\("\/api\/submissions/);
@@ -221,11 +221,10 @@ test("pilot flow protects work and requires a complete, backend-synced check-in"
   assert.match(page, /beforeunload/);
   assert.match(page, /正在完成打卡/);
   assert.match(page, /Day \{padDay\(day \+ 1\)\} 等待管理员开放/);
-  assert.match(page, /下载当前备份/);
-  assert.match(page, /导入备份恢复/);
+  assert.doesNotMatch(page, /跨设备备份|下载当前备份|导入备份恢复/);
+  assert.doesNotMatch(page, /exportBackup|importBackup/);
   assert.match(experience, /const DB_VERSION = 2/);
-  assert.match(experience, /createExperienceBackup/);
-  assert.match(experience, /restoreExperienceBackup/);
+  assert.doesNotMatch(experience, /createExperienceBackup|restoreExperienceBackup|ExperienceBackup/);
   assert.match(experience, /saveArtworkDraft/);
 });
 
