@@ -218,7 +218,14 @@ test("pilot flow protects work and requires a complete, backend-synced check-in"
 
 test("teacher backend controls participant codes, open day and completion metadata", async () => {
   const dashboard = await readFile(new URL("app/TeacherDashboard.tsx", root), "utf8");
+  const backend = await readFile(new URL("app/cloudBackend.ts", root), "utf8");
   const api = await readFile(new URL("cloudfunctions/zhiyu-api/index.js", root), "utf8");
+  assert.match(dashboard, /本期名称/);
+  assert.match(dashboard, /暂停活动/);
+  assert.match(dashboard, /结束本期/);
+  assert.match(dashboard, /导出参与数据/);
+  assert.match(dashboard, /text\/csv;charset=utf-8/);
+  assert.match(dashboard, /item\.completedDays\.join/);
   assert.match(dashboard, /全员开放到哪一天/);
   assert.match(dashboard, /批量生成/);
   assert.match(dashboard, /单独开放/);
@@ -230,6 +237,12 @@ test("teacher backend controls participant codes, open day and completion metada
   assert.match(dashboard, /批量删除/);
   assert.match(dashboard, /全选当前筛选结果/);
   assert.match(api, /process\.env\.ADMIN_PASSWORD/);
+  assert.match(api, /CAMPAIGN_PAUSED/);
+  assert.match(api, /CAMPAIGN_CLOSED/);
+  assert.equal((api.match(/requireActiveCampaign\(campaign\)/g) ?? []).length, 3);
+  assert.match(api, /admin\.updateCampaign/);
+  assert.match(api, /normalizeCampaignStatus\(campaign\.status\)/);
+  assert.match(backend, /admin\.updateCampaign/);
   assert.match(api, /PARTICIPANT_NOT_FOUND/);
   assert.match(api, /DAY_LOCKED/);
   assert.match(api, /completedDays/);

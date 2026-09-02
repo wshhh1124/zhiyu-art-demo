@@ -19,7 +19,7 @@ export type TeacherParticipant = {
 };
 
 export type TeacherOverview = {
-  campaign: { currentDay: number; status: string; updatedAt: string };
+  campaign: { name: string; currentDay: number; status: "active" | "paused" | "closed"; updatedAt: string };
   participants: TeacherParticipant[];
   created?: string[];
 };
@@ -35,6 +35,8 @@ const backendMessages: Record<string, string> = {
   PARTICIPANT_NOT_FOUND: "参与编号不存在，请和活动管理员确认。",
   PARTICIPANT_INACTIVE: "这个参与编号目前已暂停，请联系活动管理员。",
   DAY_LOCKED: "这一天还没有由管理员开放。",
+  CAMPAIGN_PAUSED: "本期活动暂时暂停，请稍后再试。",
+  CAMPAIGN_CLOSED: "本期活动已经结束，暂时不能继续打卡。",
 };
 
 export class BackendError extends Error {
@@ -62,6 +64,7 @@ export const refreshParticipantAccess = (participantCode: string) => request<Par
 export const syncParticipantCompletion = (participantCode: string, day: number, completedAt: string) => request<{ synced: true; completedDays: number[] }>("participant.complete", { participantCode, day, completedAt });
 export const getTeacherOverview = (adminPassword: string) => request<TeacherOverview>("admin.overview", { adminPassword });
 export const setTeacherCurrentDay = (adminPassword: string, currentDay: number) => request<TeacherOverview>("admin.setDay", { adminPassword, currentDay });
+export const updateTeacherCampaign = (adminPassword: string, update: { name?: string; status?: "active" | "paused" | "closed" }) => request<TeacherOverview>("admin.updateCampaign", { adminPassword, ...update });
 export const generateParticipantCodes = (adminPassword: string, prefix: string, count: number) => request<TeacherOverview>("admin.generate", { adminPassword, prefix, count });
 export const addParticipantCode = (adminPassword: string, participantCode: string) => request<TeacherOverview>("admin.addCode", { adminPassword, participantCode });
 export const updateTeacherParticipant = (adminPassword: string, participantCode: string, update: { status?: "active" | "inactive"; dayOverride?: number | null }) => request<TeacherOverview>("admin.updateParticipant", { adminPassword, participantCode, ...update });

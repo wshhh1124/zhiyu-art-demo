@@ -11,6 +11,8 @@ const CAMPAIGNS = "zhiyu_campaigns";
 const PARTICIPANTS = "zhiyu_participants";
 const CHECKINS = "zhiyu_checkins";
 const MAX_BODY_BYTES = 32 * 1024;
+const DEFAULT_CAMPAIGN_NAME = "织屿7日表达性艺术探索";
+const CAMPAIGN_STATUSES = new Set(["active", "paused", "closed"]);
 const ALLOWED_ORIGINS = new Set([
   "https://wshhh1124.github.io",
   "https://zhiyu-art-demo.wshhh1124.chatgpt.site",
@@ -20,6 +22,8 @@ const ALLOWED_ORIGINS = new Set([
 
 function now() { return new Date().toISOString(); }
 function normalizeCode(value) { return String(value || "").trim().toUpperCase().replace(/\s+/g, ""); }
+function normalizeCampaignName(value) { return String(value || "").trim().replace(/\s+/g, " ").slice(0, 40); }
+function normalizeCampaignStatus(value) { return CAMPAIGN_STATUSES.has(value) ? value : "active"; }
 function clampDay(value, fallback = 1) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed >= 1 && parsed <= 7 ? parsed : fallback;
@@ -42,9 +46,14 @@ function randomCode(prefix) {
 async function readCampaign() {
   const result = await db.collection(CAMPAIGNS).doc(CAMPAIGN_ID).get();
   if (result.data?.[0]) return result.data[0];
-  const campaign = { name: "织屿7日表达性艺术探索", currentDay: 1, status: "active", updatedAt: now() };
+  const campaign = { name: DEFAULT_CAMPAIGN_NAME, currentDay: 1, status: "active", updatedAt: now() };
   await db.collection(CAMPAIGNS).doc(CAMPAIGN_ID).set(campaign);
   return { _id: CAMPAIGN_ID, ...campaign };
+}
+function requireActiveCampaign(campaign) {
+  if (campaign.status === "paused") throw Object.assign(new Error("本期活动暂时暂停，请稍后再试。"), { statusCode: 403, code: "CAMPAIGN_PAUSED" });
+  if (campaign.status === "closed") throw Object.assign(new Error("本期活动已经结束，暂时不能继续打卡。"), { statusCode: 403, code: "CAMPAIGN_CLOSED" });
+  if (campaign.status !== "active") throw Object.assign(new Error("本期活动暂未开放。"), { statusCode: 403, code: "CAMPAIGN_INACTIVE" });
 }
 async function readParticipant(code) {
   if (!/^[A-Z0-9-]{3,24}$/.test(code)) return null;
@@ -67,7 +76,7 @@ async function joinParticipant(body) {
   const [campaign, participant] = await Promise.all([readCampaign(), readParticipant(code)]);
   if (!participant) throw Object.assign(new Error("参与编号不存在，请和活动管理员确认。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
   if (participant.status !== "active") throw Object.assign(new Error("这个参与编号目前已暂停，请联系活动管理员。"), { statusCode: 403, code: "PARTICIPANT_INACTIVE" });
-  if (campaign.status !== "active") throw Object.assign(new Error("本期活动暂未开放。"), { statusCode: 403, code: "CAMPAIGN_INACTIVE" });
+  requireActiveCampaign(campaign);
   const timestamp = now();
   await db.collection(PARTICIPANTS).doc(code).update({ joinedAt: participant.joinedAt || timestamp, lastSeenAt: timestamp });
   return participantView({ ...participant, joinedAt: participant.joinedAt || timestamp }, campaign);
@@ -80,6 +89,7 @@ async function completeDay(body) {
   const day = clampDay(body.day, 0);
   if (!day) throw Object.assign(new Error("打卡天数无效。"), { statusCode: 400, code: "INVALID_DAY" });
   const [campaign, participant] = await Promise.all([readCampaign(), readParticipant(code)]);
+  requireActiveCampaign(campaign);
   if (!participant || participant.status !== "active") throw Object.assign(new Error("参与编号无效或已暂停。"), { statusCode: 403, code: "PARTICIPANT_INACTIVE" });
   const allowedDay = participant.dayOverride ?? clampDay(campaign.currentDay);
   if (day > allowedDay) throw Object.assign(new Error("这一天还没有由管理员开放。"), { statusCode: 403, code: "DAY_LOCKED" });
@@ -107,13 +117,24 @@ async function adminOverview(body) {
     lastSeenAt: item.lastSeenAt || null,
     latestCompletionAt: item.latestCompletionAt || null,
   }));
-  return { campaign: { currentDay: clampDay(campaign.currentDay), status: campaign.status, updatedAt: campaign.updatedAt }, participants };
+  return { campaign: { name: normalizeCampaignName(campaign.name) || DEFAULT_CAMPAIGN_NAME, currentDay: clampDay(campaign.currentDay), status: normalizeCampaignStatus(campaign.status), updatedAt: campaign.updatedAt }, participants };
 }
 async function adminSetDay(body) {
   requireAdmin(body);
   const currentDay = clampDay(body.currentDay, 0);
   if (!currentDay) throw Object.assign(new Error("请选择 Day 1–Day 7。"), { statusCode: 400, code: "INVALID_DAY" });
-  await db.collection(CAMPAIGNS).doc(CAMPAIGN_ID).set({ name: "织屿7日表达性艺术探索", currentDay, status: "active", updatedAt: now() });
+  const campaign = await readCampaign();
+  await db.collection(CAMPAIGNS).doc(CAMPAIGN_ID).set({ name: normalizeCampaignName(campaign.name) || DEFAULT_CAMPAIGN_NAME, currentDay, status: normalizeCampaignStatus(campaign.status), updatedAt: now() });
+  return adminOverview(body);
+}
+async function adminUpdateCampaign(body) {
+  requireAdmin(body);
+  const campaign = await readCampaign();
+  const name = body.name === undefined ? normalizeCampaignName(campaign.name) || DEFAULT_CAMPAIGN_NAME : normalizeCampaignName(body.name);
+  const status = body.status === undefined ? normalizeCampaignStatus(campaign.status) : body.status;
+  if (name.length < 2) throw Object.assign(new Error("本期名称请填写2–40个字符。"), { statusCode: 400, code: "INVALID_CAMPAIGN_NAME" });
+  if (!CAMPAIGN_STATUSES.has(status)) throw Object.assign(new Error("活动状态无效。"), { statusCode: 400, code: "INVALID_CAMPAIGN_STATUS" });
+  await db.collection(CAMPAIGNS).doc(CAMPAIGN_ID).set({ name, currentDay: clampDay(campaign.currentDay), status, updatedAt: now() });
   return adminOverview(body);
 }
 async function adminGenerate(body) {
@@ -188,6 +209,7 @@ const actions = {
   "participant.complete": completeDay,
   "admin.overview": adminOverview,
   "admin.setDay": adminSetDay,
+  "admin.updateCampaign": adminUpdateCampaign,
   "admin.generate": adminGenerate,
   "admin.addCode": adminAddCode,
   "admin.updateParticipant": adminUpdateParticipant,

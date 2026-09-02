@@ -10,12 +10,44 @@ import {
   resetTeacherParticipant,
   setTeacherCurrentDay,
   TeacherOverview,
+  updateTeacherCampaign,
   updateTeacherParticipant,
 } from "./cloudBackend";
+
+const campaignStatusLabels = { active: "进行中", paused: "已暂停", closed: "已结束" } as const;
 
 function formatTime(value: string | null) {
   if (!value) return "尚未进入";
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
+function csvCell(value: string | number) {
+  let text = String(value);
+  if (/^[=+\-@]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function downloadParticipantCsv(overview: TeacherOverview) {
+  const headers = ["本期名称", "活动状态", "当前开放", "参与编号", "编号状态", "加入时间", "完成天数", "已完成日期", "最后活动", "最近完成"];
+  const rows = overview.participants.map((item) => [
+    overview.campaign.name,
+    campaignStatusLabels[overview.campaign.status],
+    `Day ${overview.campaign.currentDay}`,
+    item.code,
+    item.status === "active" ? "允许参与" : "已暂停",
+    item.joinedAt || "",
+    item.completedDays.length,
+    item.completedDays.join("、"),
+    item.lastSeenAt || "",
+    item.latestCompletionAt || "",
+  ]);
+  const csv = [headers, ...rows].map((row) => row.map(csvCell).join(",")).join("\r\n");
+  const url = URL.createObjectURL(new Blob(["\uFEFF", csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${overview.campaign.name.replace(/[\\/:*?"<>|]/g, "-") || "织屿活动"}-参与数据.csv`;
+  link.click();
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export default function TeacherDashboard() {
@@ -27,6 +59,7 @@ export default function TeacherDashboard() {
   const [prefix, setPrefix] = useState("ZY");
   const [count, setCount] = useState(10);
   const [customCode, setCustomCode] = useState("");
+  const [campaignName, setCampaignName] = useState("");
   const [createdCodes, setCreatedCodes] = useState<string[]>([]);
   const [participantFilter, setParticipantFilter] = useState<"all" | "joined" | "unused" | "inactive">("all");
   const [participantQuery, setParticipantQuery] = useState("");
@@ -57,37 +90,52 @@ export default function TeacherDashboard() {
     catch (caught) { setError(caught instanceof Error ? caught.message : "操作失败，请重试。"); }
     finally { setLoading(false); }
   }
+  function applyOverview(result: TeacherOverview) { setOverview(result); setCampaignName(result.campaign.name); }
   async function load(secret = password) {
-    await run(() => getTeacherOverview(secret), (result) => { setOverview(result); window.sessionStorage.setItem("zhiyu-teacher-password", secret); });
+    await run(() => getTeacherOverview(secret), (result) => { applyOverview(result); window.sessionStorage.setItem("zhiyu-teacher-password", secret); });
   }
   async function login(event: FormEvent) { event.preventDefault(); await load(); }
   async function changeDay(day: number) {
     if (!window.confirm(`确定把全员开放进度调整为 Day ${day} 吗？单独设置过的参与者不受影响。`)) return;
-    await run(() => setTeacherCurrentDay(password, day), (result) => { setOverview(result); setNotice(`全员已开放到 Day ${day}。`); });
+    await run(() => setTeacherCurrentDay(password, day), (result) => { applyOverview(result); setNotice(`全员已开放到 Day ${day}。`); });
+  }
+  async function saveCampaignName(event: FormEvent) {
+    event.preventDefault();
+    const cleanName = campaignName.trim();
+    await run(() => updateTeacherCampaign(password, { name: cleanName }), (result) => { applyOverview(result); setNotice(`本期名称已更新为“${result.campaign.name}”。`); });
+  }
+  async function changeCampaignStatus(status: "active" | "paused" | "closed") {
+    const descriptions = {
+      active: "重新开启后，参与者可以继续进入和完成打卡。",
+      paused: "暂停后，参与者不能进入或提交新打卡；后台记录和手机里的作品都不会删除。",
+      closed: "结束后，参与者不能进入或提交新打卡；你仍可以在这里重新开启。",
+    };
+    if (!window.confirm(`${descriptions[status]}确定设置为“${campaignStatusLabels[status]}”吗？`)) return;
+    await run(() => updateTeacherCampaign(password, { status }), (result) => { applyOverview(result); setNotice(`本期活动状态已设为“${campaignStatusLabels[result.campaign.status]}”。`); });
   }
   async function generate(event: FormEvent) {
     event.preventDefault();
-    await run(() => generateParticipantCodes(password, prefix, count), (result) => { setOverview(result); setCreatedCodes(result.created || []); setNotice(`已生成 ${result.created?.length || 0} 个新编号。`); });
+    await run(() => generateParticipantCodes(password, prefix, count), (result) => { applyOverview(result); setCreatedCodes(result.created || []); setNotice(`已生成 ${result.created?.length || 0} 个新编号。`); });
   }
   async function addCustom(event: FormEvent) {
     event.preventDefault();
-    await run(() => addParticipantCode(password, customCode), (result) => { setOverview(result); setCreatedCodes([customCode.trim().toUpperCase()]); setCustomCode(""); setNotice("自定义编号已添加。") });
+    await run(() => addParticipantCode(password, customCode), (result) => { applyOverview(result); setCreatedCodes([customCode.trim().toUpperCase()]); setCustomCode(""); setNotice("自定义编号已添加。") });
   }
   async function changeParticipant(code: string, update: { status?: "active" | "inactive"; dayOverride?: number | null }) {
-    await run(() => updateTeacherParticipant(password, code, update), (result) => { setOverview(result); setNotice(`${code} 已更新。`); });
+    await run(() => updateTeacherParticipant(password, code, update), (result) => { applyOverview(result); setNotice(`${code} 已更新。`); });
   }
   async function resetParticipant(code: string) {
     if (!window.confirm(`确定清空 ${code} 的云端加入时间、完成进度和个人开放设置吗？这不会删除对方手机里的作品。`)) return;
-    await run(() => resetTeacherParticipant(password, code), (result) => { setOverview(result); setNotice(`${code} 的云端使用记录已清空，可以重新开始。`); });
+    await run(() => resetTeacherParticipant(password, code), (result) => { applyOverview(result); setNotice(`${code} 的云端使用记录已清空，可以重新开始。`); });
   }
   async function deleteParticipant(code: string) {
     if (!window.confirm(`确定永久删除参与编号 ${code} 及其后端完成记录吗？此操作无法恢复，也不会删除对方手机里的作品。`)) return;
-    await run(() => deleteTeacherParticipant(password, code), (result) => { setOverview(result); setNotice(`${code} 已删除。`); });
+    await run(() => deleteTeacherParticipant(password, code), (result) => { applyOverview(result); setNotice(`${code} 已删除。`); });
   }
   async function deleteSelectedParticipants() {
     if (!selectedCodes.length) return;
     if (!window.confirm(`确定永久删除选中的 ${selectedCodes.length} 个参与编号及其后端完成记录吗？此操作无法恢复，也不会删除参与者手机里的作品。`)) return;
-    await run(() => deleteTeacherParticipants(password, selectedCodes), (result) => { setOverview(result); setSelectedCodes([]); setNotice(`已删除 ${selectedCodes.length} 个参与编号。`); });
+    await run(() => deleteTeacherParticipants(password, selectedCodes), (result) => { applyOverview(result); setSelectedCodes([]); setNotice(`已删除 ${selectedCodes.length} 个参与编号。`); });
   }
   function toggleSelected(code: string) { setSelectedCodes((current) => current.includes(code) ? current.filter((item) => item !== code) : [...current, code]); }
   function toggleAllVisible() { const visibleCodes = visibleParticipants.map((item) => item.code); setSelectedCodes((current) => visibleCodes.every((code) => current.includes(code)) ? current.filter((code) => !visibleCodes.includes(code)) : [...new Set([...current, ...visibleCodes])]); }
@@ -101,9 +149,10 @@ export default function TeacherDashboard() {
   if (!overview) return <main className="teacher-login-shell"><section className="teacher-login-card"><span>织屿心理 · 活动管理</span><h1>后端控制台</h1><p>管理本期开放进度和参与编号。管理员密码只保留在当前浏览器会话中。</p><form onSubmit={login}><label htmlFor="teacher-password">管理员密码</label><input id="teacher-password" type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /><button disabled={loading}>{loading ? "正在连接……" : "进入后端控制台"}</button></form>{error && <div className="teacher-error" role="alert">{error}</div>}<small>请使用本期管理员密码进入；参与者页面不会显示或保存这个密码。</small></section></main>;
 
   return <main className="teacher-shell">
-    <header className="teacher-header"><div><span>织屿心理 · 7日表达性艺术探索</span><h1>后端控制台</h1></div><div><button onClick={() => load()} disabled={loading}>刷新数据</button><button onClick={logout}>退出</button></div></header>
+    <header className="teacher-header"><div><span>织屿心理 · {overview.campaign.name}</span><h1>后端控制台</h1></div><div><button onClick={() => downloadParticipantCsv(overview)}>导出参与数据</button><button onClick={() => load()} disabled={loading}>刷新数据</button><button onClick={logout}>退出</button></div></header>
     {error && <div className="teacher-error" role="alert">{error}</div>}{notice && <div className="teacher-notice">{notice}</div>}
     <section className="teacher-metrics"><div><span>有效编号</span><strong>{activeCount}</strong></div><div><span>已经加入</span><strong>{joinedCount}</strong></div><div><span>七天全勤</span><strong>{fullAttendance}</strong></div><div><span>当前开放</span><strong>Day {overview.campaign.currentDay}</strong></div></section>
+    <section className={`teacher-panel teacher-campaign-panel ${overview.campaign.status}`}><div className="teacher-panel-heading"><div><span>本期设置</span><h2>名称与活动状态</h2></div><strong className="teacher-campaign-status">{campaignStatusLabels[overview.campaign.status]}</strong></div><form onSubmit={saveCampaignName}><label htmlFor="campaign-name">本期名称<input id="campaign-name" value={campaignName} onChange={(event) => setCampaignName(event.target.value)} minLength={2} maxLength={40} required /></label><button disabled={loading || campaignName.trim().length < 2 || campaignName.trim() === overview.campaign.name}>保存名称</button></form><div className="teacher-status-buttons">{([['active','进行中'],['paused','暂停活动'],['closed','结束本期']] as const).map(([status, label]) => <button key={status} className={overview.campaign.status === status ? "active" : ""} disabled={loading || overview.campaign.status === status} onClick={() => void changeCampaignStatus(status)}>{label}</button>)}</div><p>暂停或结束只会阻止新的进入和打卡，不会删除参与编号、完成记录或参与者手机里的作品。</p></section>
     <section className="teacher-panel"><div className="teacher-panel-heading"><div><span>开放控制</span><h2>全员开放到哪一天</h2></div><small>参与者刷新网页后生效</small></div><div className="teacher-day-buttons">{[1,2,3,4,5,6,7].map((day) => <button key={day} className={overview.campaign.currentDay === day ? "active" : ""} disabled={loading} onClick={() => changeDay(day)}>Day {day}</button>)}</div><p>调整为更早的天数不会删除已经完成的作品；给个人设置过“单独开放”的编号不受全员设置影响。</p></section>
     <section className="teacher-panel"><div className="teacher-panel-heading"><div><span>编号管理</span><h2>生成新参与编号</h2></div><small>建议一人一个编号</small></div><div className="teacher-create-grid"><form onSubmit={generate}><label>编号前缀<input value={prefix} onChange={(event) => setPrefix(event.target.value.toUpperCase())} maxLength={8} /></label><label>生成数量<input type="number" min="1" max="50" value={count} onChange={(event) => setCount(Number(event.target.value))} /></label><button disabled={loading}>批量生成</button></form><form onSubmit={addCustom}><label>添加指定编号<input value={customCode} onChange={(event) => setCustomCode(event.target.value.toUpperCase())} placeholder="例如 ZY-TEST01" maxLength={24} /></label><button disabled={loading || customCode.trim().length < 3}>添加编号</button></form></div>{createdCodes.length > 0 && <div className="teacher-created"><div><strong>本次新编号</strong><button onClick={copyCodes}>复制全部</button></div><pre>{createdCodes.join("\n")}</pre></div>}</section>
     <section className="teacher-panel teacher-participant-panel"><div className="teacher-panel-heading"><div><span>参与者总名单</span><h2>查看并控制所有参与编号</h2></div><div className="teacher-participant-actions"><small>{overview.participants.length} 个编号 · 当前显示 {visibleParticipants.length} 个</small><button className="danger" disabled={!selectedCodes.length || loading} onClick={() => void deleteSelectedParticipants()}>批量删除{selectedCodes.length ? `（${selectedCodes.length}）` : ""}</button></div></div><div className="teacher-list-tools"><input value={participantQuery} onChange={(event) => setParticipantQuery(event.target.value.toUpperCase())} placeholder="搜索参与编号" /><div>{([['all','全部'],['joined','已加入'],['unused','未使用'],['inactive','已暂停']] as const).map(([value, label]) => <button key={value} className={participantFilter === value ? "active" : ""} onClick={() => setParticipantFilter(value)}>{label}</button>)}</div></div>{overview.participants.length === 0 ? <div className="teacher-empty">还没有参与编号，先在上方生成一批。</div> : visibleParticipants.length === 0 ? <div className="teacher-empty">没有符合当前筛选条件的参与者。</div> : <div className="teacher-table-wrap"><table><thead><tr><th>选择</th><th>编号</th><th>参与状态</th><th>完成进度</th><th>最后活动</th><th>开放控制</th><th>管理</th></tr></thead><tbody><tr className="teacher-select-all"><td><input type="checkbox" aria-label="全选当前列表" checked={visibleParticipants.length > 0 && visibleParticipants.every((item) => selectedCodes.includes(item.code))} onChange={toggleAllVisible} /></td><td colSpan={6}>全选当前筛选结果</td></tr>{visibleParticipants.map((item) => <tr key={item.code}><td><input type="checkbox" aria-label={`选择 ${item.code}`} checked={selectedCodes.includes(item.code)} onChange={() => toggleSelected(item.code)} /></td><td><strong>{item.code}</strong><small>{item.joinedAt ? `加入：${formatTime(item.joinedAt)}` : "尚未使用"}</small></td><td><i className={item.status}>{item.status === "active" ? "允许参与" : "已暂停"}</i></td><td><b>{item.completedDays.length}/7</b><small>{item.completedDays.length ? `Day ${item.completedDays.join("、")}` : "尚未完成"}</small></td><td>{formatTime(item.lastSeenAt)}</td><td><select value={item.dayOverride ?? ""} onChange={(event) => changeParticipant(item.code, { dayOverride: event.target.value ? Number(event.target.value) : null })}><option value="">跟随全员</option>{[1,2,3,4,5,6,7].map((day) => <option key={day} value={day}>开放到 Day {day}</option>)}</select></td><td><div className="teacher-row-actions"><button className={item.status === "active" ? "danger" : "restore"} onClick={() => changeParticipant(item.code, { status: item.status === "active" ? "inactive" : "active" })}>{item.status === "active" ? "暂停参与" : "恢复参与"}</button><button className="reset" onClick={() => resetParticipant(item.code)}>清空记录</button><button className="reset" onClick={() => deleteParticipant(item.code)}>删除编号</button></div></td></tr>)}</tbody></table></div>}<p className="teacher-privacy-tip">批量删除会同时移除所选编号的后端完成记录；参与者手机里的本地作品不受影响。</p><p className="teacher-privacy-tip">后端控制台可查看编号、加入时间、完成天数和最后活动时间；作品、感受词和觉察文字仍只保存在参与者自己的设备中。</p></section>
