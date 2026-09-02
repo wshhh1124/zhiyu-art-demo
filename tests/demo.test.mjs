@@ -124,6 +124,12 @@ test("long-form guidance uses restrained visual reading cues", async () => {
   assert.match(page, /<ThemeText text=\{plan.practiceAim\} emphasis=\{plan.aimEmphasis\}/);
   assert.match(page, /任选一题起笔/);
   assert.match(page, /plan\.starterPrompts\.map/);
+  assert.match(page, /current === index \? null : index/);
+  assert.match(page, /你带来的起笔问题/);
+  assert.match(page, /plan\.starterPrompts\[selectedStarterPrompt\]/);
+  assert.match(page, /它只是一个开始入口，不必在画里回答它/);
+  assert.match(page, /重新选择/);
+  assert.match(styles, /\.selected-starter-prompt/);
   for (const field of ["prompt", "context", "prepare", "permission", "starter", "takeaway", "closing"]) {
     assert.ok(page.includes(`<SentenceLines text={plan.${field}}`), `${field} must start each sentence on a new line`);
   }
