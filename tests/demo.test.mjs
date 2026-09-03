@@ -249,7 +249,7 @@ test("teacher backend controls participant codes, open day and completion metada
   assert.match(api, /process\.env\.ADMIN_PASSWORD/);
   assert.match(api, /CAMPAIGN_PAUSED/);
   assert.match(api, /CAMPAIGN_CLOSED/);
-  assert.equal((api.match(/requireActiveCampaign\(campaign\)/g) ?? []).length, 3);
+  assert.equal((api.match(/requireActiveCampaign\(campaign\)/g) ?? []).length, 4);
   assert.match(api, /admin\.updateCampaign/);
   assert.match(api, /normalizeCampaignStatus\(campaign\.status\)/);
   assert.match(backend, /admin\.updateCampaign/);
@@ -262,4 +262,31 @@ test("teacher backend controls participant codes, open day and completion metada
   assert.match(api, /participantCodes/);
   assert.match(api, /db\.collection\(PARTICIPANTS\)\.doc\(code\)\.remove\(\)/);
   assert.doesNotMatch(api, /image|feelings|note/);
+});
+
+test("Day 7 product survey and daily incomplete reminder are wired end to end", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const dashboard = await readFile(new URL("app/TeacherDashboard.tsx", root), "utf8");
+  const backend = await readFile(new URL("app/cloudBackend.ts", root), "utf8");
+  const api = await readFile(new URL("cloudfunctions/zhiyu-api/index.js", root), "utf8");
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(dashboard, /复制未完成名单/);
+  assert.match(dashboard, /item\.joinedAt && item\.status === "active"/);
+  assert.match(dashboard, /只看体验与产品选择/);
+  assert.match(dashboard, /结营体验评分/);
+  assert.match(page, /一份很短的结营问卷/);
+  assert.match(page, /约30秒 · 自愿填写/);
+  assert.match(page, /你最想保留哪个环节/);
+  assert.match(page, /如果下期换一个主题/);
+  assert.match(page, /可接受的报名费/);
+  assert.match(page, /不分析也不上传你的作品内容/);
+  assert.match(page, /submitParticipantExitSurvey/);
+  assert.doesNotMatch(page, /surveyComment|问卷意见|补充建议/);
+  assert.match(backend, /participant\.submitSurvey/);
+  assert.match(api, /zhiyu_exit_surveys/);
+  assert.match(api, /SURVEY_NOT_READY/);
+  assert.match(api, /participant\.submitSurvey/);
+  assert.match(api, /db\.collection\(SURVEYS\)\.doc\(code\)\.set/);
+  assert.match(styles, /\.exit-survey/);
+  assert.match(styles, /\.teacher-reminder/);
 });

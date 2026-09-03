@@ -5,7 +5,17 @@ export type ParticipantAccess = {
   dayOverride: number | null;
   completedDays: number[];
   joinedAt: string | null;
+  surveySubmitted: boolean;
 };
+
+export type ExitSurveyPayload = {
+  rating: 1 | 2 | 3 | 4 | 5;
+  favorite: "guidance" | "grounding" | "creation" | "reflection" | "community";
+  continueIntent: "yes" | "depends" | "no";
+  priceRange: "under30" | "30to59" | "60to99" | "100plus" | "notNow";
+};
+
+export type ExitSurveyResponse = ExitSurveyPayload & { submittedAt: string };
 
 export type TeacherParticipant = {
   code: string;
@@ -16,6 +26,7 @@ export type TeacherParticipant = {
   joinedAt: string | null;
   lastSeenAt: string | null;
   latestCompletionAt: string | null;
+  survey: ExitSurveyResponse | null;
 };
 
 export type TeacherOverview = {
@@ -55,13 +66,15 @@ async function request<T>(action: string, payload: Record<string, unknown> = {})
     });
   } catch { throw new BackendError("NETWORK_ERROR", "暂时无法连接活动后台，请检查网络后重试。"); }
   const result = await response.json().catch(() => null) as BackendEnvelope<T> | null;
-  if (!result || !result.ok) throw new BackendError(result?.code || "BACKEND_ERROR", result?.message || "活动后台暂时不可用。");
+  if (!result) throw new BackendError("BACKEND_ERROR", "活动后台暂时不可用。");
+  if (result.ok === false) throw new BackendError(result.code || "BACKEND_ERROR", result.message || "活动后台暂时不可用。");
   return result.data;
 }
 
 export const joinWithParticipantCode = (participantCode: string) => request<ParticipantAccess>("participant.join", { participantCode });
 export const refreshParticipantAccess = (participantCode: string) => request<ParticipantAccess>("participant.refresh", { participantCode });
 export const syncParticipantCompletion = (participantCode: string, day: number, completedAt: string) => request<{ synced: true; completedDays: number[] }>("participant.complete", { participantCode, day, completedAt });
+export const submitParticipantExitSurvey = (participantCode: string, survey: ExitSurveyPayload) => request<{ submitted: true; submittedAt: string }>("participant.submitSurvey", { participantCode, ...survey });
 export const getTeacherOverview = (adminPassword: string) => request<TeacherOverview>("admin.overview", { adminPassword });
 export const setTeacherCurrentDay = (adminPassword: string, currentDay: number) => request<TeacherOverview>("admin.setDay", { adminPassword, currentDay });
 export const updateTeacherCampaign = (adminPassword: string, update: { name?: string; status?: "active" | "paused" | "closed" }) => request<TeacherOverview>("admin.updateCampaign", { adminPassword, ...update });

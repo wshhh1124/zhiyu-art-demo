@@ -217,6 +217,22 @@ fieldset { border:0; padding:0; }
 .local-card p { margin:6px 0 12px; }
 .local-card button { border:0; border-radius:10px; padding:9px 12px; background:var(--teal); color:white; cursor:pointer; }
 .local-card>small { display:block; margin-top:9px; }
+.exit-survey { margin:26px 0 14px; border:1px solid rgba(47,93,98,.22); border-radius:20px; padding:20px; background:rgba(255,255,255,.58); }
+.exit-survey>span { color:var(--teal); font-size:10px; font-weight:700; letter-spacing:.1em; }
+.exit-survey>h2 { margin:7px 0 8px; font-family:"Songti SC",serif; font-size:26px; }
+.exit-survey>p { margin:0 0 20px; color:var(--muted); font-size:11px; line-height:1.7; }
+.exit-survey fieldset { margin:0 0 18px; border:0; padding:0; }
+.exit-survey legend { margin-bottom:9px; color:var(--ink); font-size:12px; font-weight:700; }
+.survey-options { display:flex; flex-wrap:wrap; gap:7px; }
+.survey-options button { min-height:40px; border:1px solid var(--line); border-radius:999px; padding:9px 13px; background:rgba(255,255,255,.75); color:var(--muted); font-size:10px; cursor:pointer; }
+.survey-options button.active { border-color:var(--teal); background:var(--teal); color:white; box-shadow:0 7px 18px rgba(47,93,98,.16); }
+.survey-options.rating { display:grid; grid-template-columns:repeat(5,1fr); }
+.survey-options.rating button { display:grid; place-items:center; min-height:55px; border-radius:13px; font-size:16px; font-weight:700; }
+.survey-options.rating small { min-height:11px; margin-top:2px; font-size:7px; font-weight:400; }
+.survey-privacy,.survey-sync-note { display:block; margin-top:10px; color:var(--muted); font-size:9px; line-height:1.6; }
+.survey-sync-note { color:#8f4037; }
+.survey-thanks { display:grid; gap:5px; border-radius:14px; padding:16px; background:rgba(119,166,161,.12); color:var(--teal); }
+.survey-thanks small { color:var(--muted); font-size:9px; }
 .cloud-sync-line { display:flex; align-items:center; justify-content:space-between; gap:10px; margin:0 0 10px; border-radius:10px; padding:9px 10px; background:rgba(255,255,255,.5); }
 .cloud-sync-line span { color:var(--muted); font-size:9px; }
 .cloud-sync-line span.synced { color:#35685f; }
@@ -320,6 +336,19 @@ footer { display:flex; justify-content:space-between; gap:12px; margin-top:42px;
 .teacher-day-buttons { display:grid; grid-template-columns:repeat(7,1fr); gap:8px; }
 .teacher-day-buttons button { border:1px solid var(--line); background:rgba(255,255,255,.7); color:var(--muted); }
 .teacher-day-buttons button.active { border-color:var(--teal); background:var(--teal); color:white; box-shadow:0 8px 20px rgba(47,93,98,.2); }
+.teacher-reminder { display:flex; align-items:center; justify-content:space-between; gap:14px; margin-top:12px; border:1px solid rgba(47,93,98,.14); border-radius:14px; padding:13px; background:rgba(119,166,161,.08); }
+.teacher-reminder>div { display:grid; gap:4px; }
+.teacher-reminder strong { color:var(--ink); font-size:12px; }
+.teacher-reminder span { color:var(--muted); font-size:9px; line-height:1.5; }
+.teacher-survey-metrics { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+.teacher-survey-metrics>div { display:grid; gap:4px; border-radius:14px; padding:14px; background:rgba(119,166,161,.08); }
+.teacher-survey-metrics span,.teacher-survey-metrics small { color:var(--muted); font-size:9px; }
+.teacher-survey-metrics strong { color:var(--teal); font-family:"Songti SC",serif; font-size:28px; }
+.teacher-survey-groups { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:10px; }
+.teacher-survey-groups>div { border:1px solid var(--line); border-radius:14px; padding:14px; }
+.teacher-survey-groups>div>strong { font-size:11px; }
+.teacher-survey-groups p { display:flex; flex-wrap:wrap; gap:7px; margin:10px 0 0; }
+.teacher-survey-groups span { border-radius:999px; padding:6px 9px; background:rgba(119,166,161,.09); color:var(--muted); font-size:9px; }
 .teacher-create-grid { display:grid; grid-template-columns:1.25fr 1fr; gap:12px; }
 .teacher-create-grid form { display:flex; align-items:end; gap:8px; border-radius:14px; padding:13px; background:rgba(119,166,161,.08); }
 .teacher-create-grid label { display:grid; flex:1; gap:5px; color:var(--muted); font-size:9px; }
@@ -356,6 +385,6 @@ footer { display:flex; justify-content:space-between; gap:12px; margin-top:42px;
 .teacher-empty { border:1px dashed var(--line); border-radius:14px; padding:28px; color:var(--muted); font-size:11px; text-align:center; }
 .teacher-footer { margin-top:24px; }
 .teacher-footer a { color:var(--teal); }
-@media (max-width:520px) { .topbar { align-items:flex-start; } .topbar>div { flex-wrap:wrap; justify-content:flex-end; } .topbar>div>span { width:100%; text-align:right; } .response-grid,.completion-gate>div { grid-template-columns:1fr; } .breath-practice { grid-template-columns:1fr; justify-items:center; } .breath-practice ol { width:100%; grid-template-columns:repeat(3,1fr); gap:8px; } .palette { gap:7px; } .brush-types { grid-template-columns:repeat(2,1fr); } .brush-types button { grid-template-columns:34px 1fr; } .brush-types button small { display:block; } .share-options { grid-template-columns:1fr; } .share-options button { display:grid; grid-template-columns:100px 1fr; gap:8px; align-items:center; } .share-options button small { margin:0; } .share-output-heading { align-items:flex-start; flex-direction:column; gap:3px; } .creation-source,.selected-starter-prompt { grid-template-columns:1fr; } .selected-starter-prompt button { justify-self:start; } .creation-source>label { display:grid; place-items:center; min-height:42px; } .guide-grid { grid-template-columns:1fr; } .teacher-list-tools { align-items:stretch; flex-direction:column; } .teacher-list-tools>input { width:100%; } }
-@media (max-width:760px) { .teacher-shell { padding:20px 14px 44px; } .teacher-header { align-items:flex-start; flex-direction:column; } .teacher-metrics { grid-template-columns:1fr 1fr; } .teacher-campaign-panel form { align-items:stretch; flex-direction:column; } .teacher-status-buttons { grid-template-columns:1fr; } .teacher-day-buttons { grid-template-columns:repeat(4,1fr); } .teacher-create-grid { grid-template-columns:1fr; } .teacher-create-grid form { align-items:stretch; flex-direction:column; } }
+@media (max-width:520px) { .topbar { align-items:flex-start; } .topbar>div { flex-wrap:wrap; justify-content:flex-end; } .topbar>div>span { width:100%; text-align:right; } .response-grid,.completion-gate>div { grid-template-columns:1fr; } .breath-practice { grid-template-columns:1fr; justify-items:center; } .breath-practice ol { width:100%; grid-template-columns:repeat(3,1fr); gap:8px; } .palette { gap:7px; } .brush-types { grid-template-columns:repeat(2,1fr); } .brush-types button { grid-template-columns:34px 1fr; } .brush-types button small { display:block; } .share-options { grid-template-columns:1fr; } .share-options button { display:grid; grid-template-columns:100px 1fr; gap:8px; align-items:center; } .share-options button small { margin:0; } .share-output-heading { align-items:flex-start; flex-direction:column; gap:3px; } .creation-source,.selected-starter-prompt { grid-template-columns:1fr; } .selected-starter-prompt button { justify-self:start; } .creation-source>label { display:grid; place-items:center; min-height:42px; } .guide-grid { grid-template-columns:1fr; } .teacher-list-tools { align-items:stretch; flex-direction:column; } .teacher-list-tools>input { width:100%; } .survey-options.rating small { display:none; } }
+@media (max-width:760px) { .teacher-shell { padding:20px 14px 44px; } .teacher-header { align-items:flex-start; flex-direction:column; } .teacher-metrics { grid-template-columns:1fr 1fr; } .teacher-campaign-panel form { align-items:stretch; flex-direction:column; } .teacher-status-buttons { grid-template-columns:1fr; } .teacher-day-buttons { grid-template-columns:repeat(4,1fr); } .teacher-reminder { align-items:stretch; flex-direction:column; } .teacher-survey-metrics,.teacher-survey-groups { grid-template-columns:1fr; } .teacher-create-grid { grid-template-columns:1fr; } .teacher-create-grid form { align-items:stretch; flex-direction:column; } }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { scroll-behavior:auto!important; transition:none!important; animation:none!important; } }

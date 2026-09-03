@@ -10,9 +10,13 @@ const CAMPAIGN_ID = "zhiyu-7day-pilot";
 const CAMPAIGNS = "zhiyu_campaigns";
 const PARTICIPANTS = "zhiyu_participants";
 const CHECKINS = "zhiyu_checkins";
+const SURVEYS = "zhiyu_exit_surveys";
 const MAX_BODY_BYTES = 32 * 1024;
 const DEFAULT_CAMPAIGN_NAME = "织屿7日表达性艺术探索";
 const CAMPAIGN_STATUSES = new Set(["active", "paused", "closed"]);
+const SURVEY_FAVORITES = new Set(["guidance", "grounding", "creation", "reflection", "community"]);
+const SURVEY_CONTINUE_INTENTS = new Set(["yes", "depends", "no"]);
+const SURVEY_PRICE_RANGES = new Set(["under30", "30to59", "60to99", "100plus", "notNow"]);
 const ALLOWED_ORIGINS = new Set([
   "https://wshhh1124.github.io",
   "https://zhiyu-art-demo.wshhh1124.chatgpt.site",
@@ -69,6 +73,7 @@ function participantView(participant, campaign) {
     dayOverride: override,
     completedDays: Array.isArray(participant.completedDays) ? participant.completedDays : [],
     joinedAt: participant.joinedAt || null,
+    surveySubmitted: Boolean(participant.surveySubmittedAt),
   };
 }
 async function joinParticipant(body) {
@@ -101,12 +106,31 @@ async function completeDay(body) {
   ]);
   return { code, day, completedDays, synced: true };
 }
+async function submitExitSurvey(body) {
+  const code = normalizeCode(body.participantCode);
+  const [campaign, participant] = await Promise.all([readCampaign(), readParticipant(code)]);
+  requireActiveCampaign(campaign);
+  if (!participant || participant.status !== "active") throw Object.assign(new Error("参与编号无效或已暂停。"), { statusCode: 403, code: "PARTICIPANT_INACTIVE" });
+  if (!Array.isArray(participant.completedDays) || !participant.completedDays.includes(7)) throw Object.assign(new Error("完成 Day 7 后才能提交结营问卷。"), { statusCode: 409, code: "SURVEY_NOT_READY" });
+  const rating = Number(body.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5 || !SURVEY_FAVORITES.has(body.favorite) || !SURVEY_CONTINUE_INTENTS.has(body.continueIntent) || !SURVEY_PRICE_RANGES.has(body.priceRange)) {
+    throw Object.assign(new Error("请完成结营问卷的四个选择。"), { statusCode: 400, code: "INVALID_SURVEY" });
+  }
+  const submittedAt = now();
+  await Promise.all([
+    db.collection(SURVEYS).doc(code).set({ participantCode: code, rating, favorite: body.favorite, continueIntent: body.continueIntent, priceRange: body.priceRange, submittedAt }),
+    db.collection(PARTICIPANTS).doc(code).update({ surveySubmittedAt: submittedAt, lastSeenAt: submittedAt }),
+  ]);
+  return { submitted: true, submittedAt };
+}
 async function adminOverview(body) {
   requireAdmin(body);
-  const [campaign, participantResult] = await Promise.all([
+  const [campaign, participantResult, surveyResult] = await Promise.all([
     readCampaign(),
     db.collection(PARTICIPANTS).orderBy("createdAt", "desc").limit(500).get(),
+    db.collection(SURVEYS).limit(500).get(),
   ]);
+  const surveys = new Map((surveyResult.data || []).map((item) => [item.participantCode, item]));
   const participants = (participantResult.data || []).map((item) => ({
     code: item.code,
     status: item.status,
@@ -116,6 +140,13 @@ async function adminOverview(body) {
     joinedAt: item.joinedAt || null,
     lastSeenAt: item.lastSeenAt || null,
     latestCompletionAt: item.latestCompletionAt || null,
+    survey: surveys.has(item.code) ? {
+      rating: surveys.get(item.code).rating,
+      favorite: surveys.get(item.code).favorite,
+      continueIntent: surveys.get(item.code).continueIntent,
+      priceRange: surveys.get(item.code).priceRange,
+      submittedAt: surveys.get(item.code).submittedAt,
+    } : null,
   }));
   return { campaign: { name: normalizeCampaignName(campaign.name) || DEFAULT_CAMPAIGN_NAME, currentDay: clampDay(campaign.currentDay), status: normalizeCampaignStatus(campaign.status), updatedAt: campaign.updatedAt }, participants };
 }
@@ -178,7 +209,8 @@ async function adminResetParticipant(body) {
   if (!participant) throw Object.assign(new Error("参与编号不存在。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
   await Promise.all([
     db.collection(CHECKINS).where({ participantCode: code }).remove(),
-    db.collection(PARTICIPANTS).doc(code).update({ completedDays: [], joinedAt: null, lastSeenAt: null, latestCompletionAt: null, dayOverride: null, updatedAt: now() }),
+    db.collection(SURVEYS).doc(code).remove(),
+    db.collection(PARTICIPANTS).doc(code).update({ completedDays: [], joinedAt: null, lastSeenAt: null, latestCompletionAt: null, surveySubmittedAt: null, dayOverride: null, updatedAt: now() }),
   ]);
   return adminOverview(body);
 }
@@ -189,6 +221,7 @@ async function adminDeleteParticipant(body) {
   if (!participant) throw Object.assign(new Error("参与编号不存在。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
   await Promise.all([
     db.collection(CHECKINS).where({ participantCode: code }).remove(),
+    db.collection(SURVEYS).doc(code).remove(),
     db.collection(PARTICIPANTS).doc(code).remove(),
   ]);
   return adminOverview(body);
@@ -199,7 +232,7 @@ async function adminDeleteParticipants(body) {
   if (!codes.length || codes.length > 100 || codes.some((code) => !/^[A-Z0-9-]{3,24}$/.test(code))) throw Object.assign(new Error("请选择有效的参与编号。"), { statusCode: 400, code: "INVALID_CODES" });
   const existing = await Promise.all(codes.map(readParticipant));
   if (existing.some((item) => !item)) throw Object.assign(new Error("部分参与编号不存在，请刷新后重试。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
-  await Promise.all(codes.flatMap((code) => [db.collection(CHECKINS).where({ participantCode: code }).remove(), db.collection(PARTICIPANTS).doc(code).remove()]));
+  await Promise.all(codes.flatMap((code) => [db.collection(CHECKINS).where({ participantCode: code }).remove(), db.collection(SURVEYS).doc(code).remove(), db.collection(PARTICIPANTS).doc(code).remove()]));
   return adminOverview(body);
 }
 
@@ -207,6 +240,7 @@ const actions = {
   "participant.join": joinParticipant,
   "participant.refresh": refreshAccess,
   "participant.complete": completeDay,
+  "participant.submitSurvey": submitExitSurvey,
   "admin.overview": adminOverview,
   "admin.setDay": adminSetDay,
   "admin.updateCampaign": adminUpdateCampaign,

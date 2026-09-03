@@ -17,8 +17,8 @@ import {
 } from "./experience";
 import TeacherDashboard from "./TeacherDashboard";
 import { emphasisParts, splitSentences } from "./reading";
-import { joinWithParticipantCode, refreshParticipantAccess, syncParticipantCompletion } from "./cloudBackend";
-import type { ParticipantAccess } from "./cloudBackend";
+import { joinWithParticipantCode, refreshParticipantAccess, submitParticipantExitSurvey, syncParticipantCompletion } from "./cloudBackend";
+import type { ExitSurveyPayload, ParticipantAccess } from "./cloudBackend";
 
 const palette = [
   "#1F2933", "#53606B", "#9AA3AA", "#D7DADD", "#F4EFE8", "#FFFFFF",
@@ -48,6 +48,25 @@ const shareOptions = [
   { id: "artTitle", label: "作品＋标题", hint: "放入完整画面，不显示感受" },
   { id: "artStory", label: "作品＋一句话", hint: "画面、标题和你的自述" },
 ] as const;
+const surveyFavoriteOptions: { id: ExitSurveyPayload["favorite"]; label: string }[] = [
+  { id: "guidance", label: "主题引导" },
+  { id: "grounding", label: "呼吸到场" },
+  { id: "creation", label: "自由作画" },
+  { id: "reflection", label: "命名赋义" },
+  { id: "community", label: "社群陪伴" },
+];
+const surveyContinueOptions: { id: ExitSurveyPayload["continueIntent"]; label: string }[] = [
+  { id: "yes", label: "愿意参加" },
+  { id: "depends", label: "看主题决定" },
+  { id: "no", label: "暂不参加" },
+];
+const surveyPriceOptions: { id: ExitSurveyPayload["priceRange"]; label: string }[] = [
+  { id: "under30", label: "29元以内" },
+  { id: "30to59", label: "30–59元" },
+  { id: "60to99", label: "60–99元" },
+  { id: "100plus", label: "100元以上" },
+  { id: "notNow", label: "暂不付费" },
+];
 
 type BrushType = (typeof brushOptions)[number]["id"];
 type PracticePhase = "intro" | "ground" | "guide" | "create" | "reflect";
@@ -142,6 +161,12 @@ export default function Home() {
   const [sharePreviewUrl, setSharePreviewUrl] = useState("");
   const [shareGenerating, setShareGenerating] = useState(false);
   const [saveImagePreview, setSaveImagePreview] = useState<SaveImagePreview>(null);
+  const [surveyRating, setSurveyRating] = useState<ExitSurveyPayload["rating"] | 0>(0);
+  const [surveyFavorite, setSurveyFavorite] = useState<ExitSurveyPayload["favorite"] | "">("");
+  const [surveyContinueIntent, setSurveyContinueIntent] = useState<ExitSurveyPayload["continueIntent"] | "">("");
+  const [surveyPriceRange, setSurveyPriceRange] = useState<ExitSurveyPayload["priceRange"] | "">("");
+  const [surveySubmitted, setSurveySubmitted] = useState(false);
+  const [surveySubmitting, setSurveySubmitting] = useState(false);
   const plan = dayPlans[day - 1];
   const energyText = useMemo(() => ["", "很轻", "偏低", "中等", "在流动", "很充沛"][energy], [energy]);
   const completed = records.length;
@@ -157,6 +182,7 @@ export default function Home() {
     { label: "选择希望获得的回应", done: responseChosen },
   ];
   const completionReady = completionRequirements.every((item) => item.done);
+  const surveyReady = Boolean(surveyRating && surveyFavorite && surveyContinueIntent && surveyPriceRange);
   const nextIncompleteDay = dayPlans.find((item) => !records.some((record) => record.day === item.day))?.day ?? 7;
   const sortedRecords = useMemo(() => [...records].sort((a, b) => a.day - b.day), [records]);
   const feelingSummary = useMemo(() => {
@@ -180,7 +206,7 @@ export default function Home() {
           getDayRecords(),
         ]);
         if (cancelled) return;
-        setProfile(savedProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setUnlocked(true);
+        setProfile(savedProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setSurveySubmitted(access.surveySubmitted); setUnlocked(true);
         const next = dayPlans.find((item) => item.day <= access.currentDay && !saved.some((record) => record.day === item.day))?.day;
         if (saved.length || !next) { setDay(next ?? Math.min(access.currentDay, 7)); setPhase("gallery"); }
         else { setDay(next); setPhase("intro"); }
@@ -227,7 +253,7 @@ export default function Home() {
 
   async function enterExperience(access: ParticipantAccess, activeProfile: ParticipantProfile, saved: DayRecord[], restoreMessage = "") {
     await saveParticipantProfile(activeProfile);
-    setProfile(activeProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setUnlocked(true);
+    setProfile(activeProfile); setRecords(saved); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setSurveySubmitted(access.surveySubmitted); setUnlocked(true);
     const availableDay = access.currentDay;
     const next = dayPlans.find((item) => item.day <= availableDay && !saved.some((record) => record.day === item.day))?.day;
     if (saved.length || !next) { setDay(next ?? Math.min(availableDay, 7)); setPhase("gallery"); }
@@ -263,13 +289,13 @@ export default function Home() {
       await clearExperienceData();
       const activeProfile: ParticipantProfile = { id: "profile", participantId: access.code, startedAt: access.joinedAt ?? new Date().toISOString() };
       await saveParticipantProfile(activeProfile);
-      setProfile(activeProfile); setRecords([]); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setParticipantIdInput(access.code); setSwitchCode(""); setUnlocked(true); setStorageNote("旧记录已从这台设备清除，已经切换到新的参与编号。");
+      setProfile(activeProfile); setRecords([]); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setSurveySubmitted(access.surveySubmitted); setParticipantIdInput(access.code); setSwitchCode(""); setUnlocked(true); setStorageNote("旧记录已从这台设备清除，已经切换到新的参与编号。");
       await resetFields(1);
     } catch (caught) { setCodeError(caught instanceof Error ? caught.message : "清除或更换编号失败，请稍后重试。"); }
   }
   async function refreshCloudAccess() {
     if (!profile) return;
-    try { const access = await refreshParticipantAccess(profile.participantId); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setStorageNote(`管理员目前开放到 Day ${padDay(access.currentDay)}，进度已刷新。`); }
+    try { const access = await refreshParticipantAccess(profile.participantId); setCloudMaxDay(access.currentDay); setCloudCompletedDays(access.completedDays); setSurveySubmitted(access.surveySubmitted); setStorageNote(`管理员目前开放到 Day ${padDay(access.currentDay)}，进度已刷新。`); }
     catch (caught) { setError(caught instanceof Error ? caught.message : "开放进度刷新失败，请稍后重试。"); }
   }
   async function syncCompletion(record: DayRecord) {
@@ -281,6 +307,15 @@ export default function Home() {
       setCloudSyncStatus("synced"); setStorageNote(`Day ${padDay(record.day)} 打卡成功，后端已经记录。`); return true;
     }
     catch { setCloudSyncStatus("failed"); setStorageNote(`Day ${padDay(record.day)} 的作品已安全保存在本机，但打卡还没有同步到后端。请点击“重新同步完成打卡”。`); return false; }
+  }
+  async function submitExitSurvey() {
+    if (!profile || !surveyRating || !surveyFavorite || !surveyContinueIntent || !surveyPriceRange || cloudSyncStatus !== "synced") return;
+    setSurveySubmitting(true); setError("");
+    try {
+      await submitParticipantExitSurvey(profile.participantId, { rating: surveyRating, favorite: surveyFavorite, continueIntent: surveyContinueIntent, priceRange: surveyPriceRange });
+      setSurveySubmitted(true); setStorageNote("结营问卷已提交。谢谢你帮助我们改进下一期活动。");
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "结营问卷提交失败，请稍后重试。"); }
+    finally { setSurveySubmitting(false); }
   }
   function point(event: PointerEvent<HTMLCanvasElement>) { const rect = event.currentTarget.getBoundingClientRect(); return { x: event.clientX - rect.left, y: event.clientY - rect.top }; }
   function captureUndoSnapshot() {
@@ -430,7 +465,7 @@ export default function Home() {
 
   if (teacherMode) return <TeacherDashboard />;
   if (restoringParticipant) return <main className="gate-shell"><section className="gate-card" aria-live="polite"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>正在恢复<br />上次进度</h1><p>正在读取这台设备上保存的参与编号和作品，请稍候……</p></section></main>;
-  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>管理员会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>任何一天都可以暂停、跳过或不公开作品。</small></details><details className="participation-notice" open><summary>正式参与说明 · 请先阅读</summary><div><section><strong>参与范围与活动性质</strong><p>本期面向18岁及以上成年人。这是一项心理教育与自我探索活动，不替代心理咨询、诊断、治疗或医疗服务。</p></section><section><strong>你的选择权</strong><p>你可以随时跳过、暂停或退出，不必解释原因；完成天数不代表心理健康水平。</p></section><section><strong>数据与作品保存</strong><p>作品和觉察文字只保存在当前浏览器。后台仅记录参与编号、开放进度、完成日期和最近活动时间。换设备、清除网站数据或使用无痕模式可能使本机作品无法恢复；建议始终使用同一台设备和浏览器完成练习，并在每天结束后保存作品图片。</p></section><section><strong>社群分享边界</strong><p>不要求在群内公开作品。若自主分享，请避免透露可识别信息；请勿截图或转发他人内容，但群聊无法保证绝对保密。</p></section><section><strong>出现明显不适时</strong><p>如果练习引发强烈或持续不适、自伤或伤人想法，或你正处于紧急危险中，请立即停止，联系可信任的人、当地紧急服务或合适的专业支持。本活动不提供24小时危机干预，工作人员回复时间以群公告为准。</p></section><section><strong>删除记录</strong><p>需要删除后台编号和完成记录时，请联系活动管理员。管理员无法远程查看或删除你手机中的本机作品。</p></section></div></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => { setParticipantIdInput(event.target.value.toUpperCase()); setSwitchCode(""); setCodeError(""); }} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入管理员单独发给你的编号，不要填写真实姓名。</small><label className="participation-consent"><input type="checkbox" checked={participationAccepted} onChange={(event) => { setParticipationAccepted(event.target.checked); setCodeError(""); }} required /><span><strong>我已阅读并理解参与说明</strong><small>我确认已满18周岁，并理解这不是心理咨询或治疗。</small></span></label>{codeError && <small role="alert">{codeError}</small>}{switchCode && <div className="switch-code-actions"><button type="button" className="danger" onClick={clearLocalAndSwitch}>清除旧记录并更换编号</button></div>}<button type="submit" disabled={!participationAccepted}>验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台只记录参与编号、开放进度和完成时间，不上传你的作品、感受词或觉察文字。</span></div></section></main>;
+  if (!unlocked) return <main className="gate-shell"><section className="gate-card"><span className="gate-badge">织屿心理 · 伙伴体验版</span><h1>把自己<br />画回来</h1><p>一个用颜色、书写和觉察慢慢靠近自己的7日表达性艺术探索。</p><div className="gate-facts"><span>每天约5–8分钟</span><span>完成7幅个人作品</span><span>不要求公开分享</span></div><details className="program-intro"><summary>先了解这7天会发生什么</summary><p>管理员会按本期活动进度开放主题。你可以直接在网页绘画，也可以上传纸上作品；完成后由你为作品命名并选择希望获得的回应。</p><ol>{dayPlans.map((item) => <li key={item.day}><strong>Day {padDay(item.day)}</strong><span>{item.shortTitle}</span></li>)}</ol><small>任何一天都可以暂停、跳过或不公开作品。</small></details><details className="participation-notice" open><summary>正式参与说明 · 请先阅读</summary><div><section><strong>参与范围与活动性质</strong><p>本期面向18岁及以上成年人。这是一项心理教育与自我探索活动，不替代心理咨询、诊断、治疗或医疗服务。</p></section><section><strong>你的选择权</strong><p>你可以随时跳过、暂停或退出，不必解释原因；完成天数不代表心理健康水平。</p></section><section><strong>数据与作品保存</strong><p>作品和觉察文字只保存在当前浏览器。后台记录参与编号、开放进度、完成日期和最近活动时间；仅当你在 Day 7 自愿提交结营问卷时，也会记录问卷中的四个选择。换设备、清除网站数据或使用无痕模式可能使本机作品无法恢复；建议始终使用同一台设备和浏览器完成练习，并在每天结束后保存作品图片。</p></section><section><strong>社群分享边界</strong><p>不要求在群内公开作品。若自主分享，请避免透露可识别信息；请勿截图或转发他人内容，但群聊无法保证绝对保密。</p></section><section><strong>出现明显不适时</strong><p>如果练习引发强烈或持续不适、自伤或伤人想法，或你正处于紧急危险中，请立即停止，联系可信任的人、当地紧急服务或合适的专业支持。本活动不提供24小时危机干预，工作人员回复时间以群公告为准。</p></section><section><strong>删除记录</strong><p>需要删除后台编号和完成记录时，请联系活动管理员。管理员无法远程查看或删除你手机中的本机作品。</p></section></div></details><form onSubmit={unlock}><label htmlFor="participant-id">参与编号</label><input className="participant-input" id="participant-id" autoComplete="off" maxLength={24} value={participantIdInput} onChange={(event) => { setParticipantIdInput(event.target.value.toUpperCase()); setSwitchCode(""); setCodeError(""); }} placeholder="例如 ZY-7K3MP" /><small className="field-help">输入管理员单独发给你的编号，不要填写真实姓名。</small><label className="participation-consent"><input type="checkbox" checked={participationAccepted} onChange={(event) => { setParticipationAccepted(event.target.checked); setCodeError(""); }} required /><span><strong>我已阅读并理解参与说明</strong><small>我确认已满18周岁，并理解这不是心理咨询或治疗。</small></span></label>{codeError && <small role="alert">{codeError}</small>}{switchCode && <div className="switch-code-actions"><button type="button" className="danger" onClick={clearLocalAndSwitch}>清除旧记录并更换编号</button></div>}<button type="submit" disabled={!participationAccepted}>验证编号并进入 <span>→</span></button></form><div className="privacy-note"><strong>作品只保存在当前设备</strong><span>后台记录参与编号、开放进度和完成时间；Day 7 结营问卷仅在你自愿提交时记录四个选择。作品、感受词和觉察文字不会上传。</span></div></section></main>;
 
   return <main className="app-shell">
     <header className="topbar"><button className="brand-mark" onClick={showGallery}>织屿心理</button><div><span>{completed}/7 已完成 · 开放至 Day {maxUnlockedDay}</span><button onClick={refreshCloudAccess}>刷新开放</button><button onClick={showGallery}>7日作品册</button></div></header>
@@ -470,8 +505,9 @@ export default function Home() {
       <div className="art-preview result-art"><img src={previewUrl} alt={title} /></div>
       <div className="mirror-card"><span>即时镜面回应 · 体验版</span><p>{mirrorFeedback()}</p><small>回应只复述你主动提供的信息，不分析颜色、符号或人格。</small></div>
       <div className="closing-card"><span>先把今天放回生活</span><p><SentenceLines text={plan.closing} /></p></div>
-      <div className={`local-card ${saveStatus} ${cloudSyncStatus}`}><strong>{cloudSyncStatus === "synced" ? "完成打卡 · 后端已记录" : cloudSyncStatus === "failed" ? "作品已保存，但打卡尚未同步" : "正在完成打卡"}</strong><p>{cloudSyncStatus === "synced" ? "你不需要再做任何操作。作品保存在当前设备，后端只看到编号、完成天数和时间。" : cloudSyncStatus === "failed" ? "请检查网络后重新同步；同步成功前，后端暂时看不到这一天已完成。" : "正在保存作品并向后端同步完成状态，请稍候。"}</p><div className="cloud-sync-line"><span className={cloudSyncStatus}>{cloudSyncStatus === "syncing" ? "正在同步到后端……" : cloudSyncStatus === "synced" ? "✓ 同步成功" : cloudSyncStatus === "failed" ? "同步失败" : "等待同步"}</span>{cloudSyncStatus === "failed" && records.find((item) => item.day === day) && <button onClick={() => { const record = records.find((item) => item.day === day); if (record) void syncCompletion(record); }}>重新同步完成打卡</button>}</div><small>作品、感受词和觉察文字不会上传到后端。</small></div>
+      <div className={`local-card ${saveStatus} ${cloudSyncStatus}`}><strong>{cloudSyncStatus === "synced" ? "完成打卡 · 后端已记录" : cloudSyncStatus === "failed" ? "作品已保存，但打卡尚未同步" : "正在完成打卡"}</strong><p>{cloudSyncStatus === "synced" ? "你不需要再做任何操作。作品保存在当前设备，后端只看到编号、完成天数和时间，以及你自愿提交的结营问卷选择。" : cloudSyncStatus === "failed" ? "请检查网络后重新同步；同步成功前，后端暂时看不到这一天已完成。" : "正在保存作品并向后端同步完成状态，请稍候。"}</p><div className="cloud-sync-line"><span className={cloudSyncStatus}>{cloudSyncStatus === "syncing" ? "正在同步到后端……" : cloudSyncStatus === "synced" ? "✓ 同步成功" : cloudSyncStatus === "failed" ? "同步失败" : "等待同步"}</span>{cloudSyncStatus === "failed" && records.find((item) => item.day === day) && <button onClick={() => { const record = records.find((item) => item.day === day); if (record) void syncCompletion(record); }}>重新同步完成打卡</button>}</div><small>作品、感受词和觉察文字不会上传到后端。</small></div>
       <div className="share-card"><span>由你决定要不要分享</span><h2>先生成，再决定是否分享</h2><p>选择卡片里出现的内容。后两种都会嵌入你刚完成的完整画面，不会自动发群。</p><div className="share-options">{shareOptions.map((item) => <button key={item.id} className={shareMode === item.id ? "active" : ""} onClick={() => { setShareMode(item.id); setSharePreviewUrl(""); }}><strong>{item.label}</strong><small>{item.hint}</small></button>)}</div><button className="card-action" disabled={shareGenerating} onClick={makeShareCard}>{shareGenerating ? "正在生成……" : "生成卡片预览"}</button>{sharePreviewUrl && <div className="share-output" id="share-card-preview"><div className="share-output-heading"><span>生成结果 · 3:4 图片</span><strong>作品已经嵌入卡片</strong></div><img src={sharePreviewUrl} alt={`Day ${day} 自主分享卡预览`} /><p>确认内容和作品都正确后，先保存图片；是否发送给他人由你决定。</p><div className="share-output-actions"><button onClick={() => openImageSavePreview(sharePreviewUrl, "分享卡")}>保存图片</button></div></div>}</div>
+      {day === 7 && allComplete && <section className={`exit-survey ${surveySubmitted ? "submitted" : ""}`}><span>约30秒 · 自愿填写</span><h2>一份很短的结营问卷</h2><p>只询问活动体验和下一期产品选择，不分析也不上传你的作品内容。</p>{surveySubmitted ? <div className="survey-thanks"><strong>✓ 已提交，谢谢你的真实回答</strong><small>你的选择已经进入后台汇总，不需要重复填写。</small></div> : <><fieldset><legend>1. 这7天的整体体验怎么样？</legend><div className="survey-options rating">{([1,2,3,4,5] as const).map((value) => <button type="button" key={value} className={surveyRating === value ? "active" : ""} onClick={() => setSurveyRating(value)}>{value}<small>{value === 1 ? "不太适合" : value === 5 ? "很有收获" : ""}</small></button>)}</div></fieldset><fieldset><legend>2. 你最想保留哪个环节？</legend><div className="survey-options">{surveyFavoriteOptions.map((item) => <button type="button" key={item.id} className={surveyFavorite === item.id ? "active" : ""} onClick={() => setSurveyFavorite(item.id)}>{item.label}</button>)}</div></fieldset><fieldset><legend>3. 如果下期换一个主题，你愿意继续参加吗？</legend><div className="survey-options">{surveyContinueOptions.map((item) => <button type="button" key={item.id} className={surveyContinueIntent === item.id ? "active" : ""} onClick={() => setSurveyContinueIntent(item.id)}>{item.label}</button>)}</div></fieldset><fieldset><legend>4. 类似7日活动，你可接受的报名费是？</legend><div className="survey-options">{surveyPriceOptions.map((item) => <button type="button" key={item.id} className={surveyPriceRange === item.id ? "active" : ""} onClick={() => setSurveyPriceRange(item.id)}>{item.label}</button>)}</div></fieldset><button className="card-action" disabled={!surveyReady || surveySubmitting || cloudSyncStatus !== "synced"} onClick={() => void submitExitSurvey()}>{surveySubmitting ? "正在提交……" : "提交结营问卷"}</button>{cloudSyncStatus !== "synced" && <small className="survey-sync-note">请先等待 Day 07 显示“后端已记录”，再提交问卷。</small>}<small className="survey-privacy">后台只保存参与编号和以上四个选择，不包含作品、感受词或觉察文字。</small></>}</section>}
       {day < 7 && (day + 1 <= maxUnlockedDay ? <button className="primary-button" onClick={() => openDay(day + 1)}>{records.some((record) => record.day === day + 1) ? "查看" : "进入"} Day {padDay(day + 1)} <span>→</span></button> : <div className="locked-next"><strong>Day {padDay(day + 1)} 等待管理员开放</strong><span>开放后点击顶部“刷新开放”即可进入；今天可以先在这里收束。</span></div>)}
       {day === 7 && allComplete && <button className="primary-button" onClick={downloadArchive}>下载7日个人作品档案 <span>↓</span></button>}
       <button className="primary-button secondary" onClick={showGallery}>查看7日作品册 <span>▦</span></button>
