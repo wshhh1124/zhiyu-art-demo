@@ -186,6 +186,16 @@ test("each daily task is split into a reversible five-page journey", async () =>
   assert.match(styles, /prefers-reduced-motion:reduce[^}]*animation:none!important/);
 });
 
+test("the daily theme returns after breathing on guide, creation and reflection pages", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const styles = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(page, /function DayThemeReminder/);
+  assert.equal((page.match(/<DayThemeReminder plan=\{plan\} \/>/g) ?? []).length, 3);
+  assert.match(page, /今日主题 · DAY/);
+  assert.match(page, /aria-label="今日主题提醒"/);
+  assert.match(styles, /\.day-theme-reminder/);
+});
+
 test("pilot flow protects work and requires a complete, backend-synced check-in", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");

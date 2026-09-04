@@ -104,6 +104,9 @@ button { -webkit-tap-highlight-color:transparent; }
 .grounding-permission { border-left:3px solid var(--rose); border-radius:0 14px 14px 0; padding:12px 14px; background:rgba(233,183,169,.12); }
 .grounding-permission strong { color:var(--rose-ink); font-size:11px; }
 .grounding-permission p { margin:5px 0 0; color:var(--muted); font-size:10px; font-style:italic; line-height:1.65; }
+.day-theme-reminder { display:grid; gap:5px; margin:16px 2px 18px; border-left:4px solid var(--rose-ink); border-radius:0 16px 16px 0; padding:12px 15px; background:linear-gradient(90deg,rgba(233,183,169,.2),rgba(255,255,255,.32)); }
+.day-theme-reminder>span { color:var(--teal); font-size:9px; font-weight:700; letter-spacing:.1em; }
+.day-theme-reminder>strong { color:var(--ink); font-family:"Songti SC","Noto Serif CJK SC",serif; font-size:clamp(18px,5vw,23px); line-height:1.45; }
 .guide-page>.practice-guide { margin-top:20px; }
 .creation-page .section-heading.compact { margin:22px 2px 16px; }
 .selected-starter-prompt { display:grid; grid-template-columns:1fr auto; align-items:center; gap:14px; margin:0 2px 16px; border-left:3px solid var(--rose-ink); border-radius:0 15px 15px 0; padding:13px 14px; background:rgba(233,183,169,.14); }
