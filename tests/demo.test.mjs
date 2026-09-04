@@ -196,6 +196,14 @@ test("the daily theme returns after breathing on guide, creation and reflection 
   assert.match(styles, /\.day-theme-reminder/);
 });
 
+test("reflection offers content, visual and uncertainty choices for what to notice", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  for (const option of ["画面内容", "色彩", "线条", "形状", "留白", "重叠", "边缘", "位置与距离", "整体感觉", "还说不清"]) {
+    assert.ok(page.includes(`"${option}"`), `missing focus option: ${option}`);
+  }
+  assert.match(page, /选第一眼最想指给别人看的；不确定也可以/);
+});
+
 test("pilot flow protects work and requires a complete, backend-synced check-in", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const experience = await readFile(new URL("app/experience.ts", root), "utf8");
