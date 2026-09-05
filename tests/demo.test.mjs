@@ -292,6 +292,9 @@ test("Day 7 product survey and daily incomplete reminder are wired end to end", 
   assert.match(dashboard, /item\.joinedAt && item\.status === "active"/);
   assert.match(dashboard, /只看体验与产品选择/);
   assert.match(dashboard, /结营体验评分/);
+  assert.match(dashboard, /参与编号[\s\S]*提交时间[\s\S]*体验评分[\s\S]*最想保留[\s\S]*下期意愿[\s\S]*可接受价格/);
+  assert.match(dashboard, /删除问卷/);
+  assert.match(dashboard, /只会删除这份问卷，不会删除参与编号、完成进度/);
   assert.match(page, /一份很短的结营问卷/);
   assert.match(page, /约30秒 · 自愿填写/);
   assert.match(page, /你最想保留哪个环节/);
@@ -301,10 +304,14 @@ test("Day 7 product survey and daily incomplete reminder are wired end to end", 
   assert.match(page, /submitParticipantExitSurvey/);
   assert.doesNotMatch(page, /surveyComment|问卷意见|补充建议/);
   assert.match(backend, /participant\.submitSurvey/);
+  assert.match(backend, /admin\.deleteSurvey/);
   assert.match(api, /zhiyu_exit_surveys/);
   assert.match(api, /SURVEY_NOT_READY/);
   assert.match(api, /participant\.submitSurvey/);
+  assert.match(api, /admin\.deleteSurvey/);
   assert.match(api, /db\.collection\(SURVEYS\)\.doc\(code\)\.set/);
+  assert.match(api, /db\.collection\(SURVEYS\)\.doc\(code\)\.remove/);
+  assert.match(api, /surveySubmittedAt: null/);
   assert.match(styles, /\.exit-survey/);
   assert.match(styles, /\.teacher-reminder/);
 });

@@ -214,6 +214,21 @@ async function adminResetParticipant(body) {
   ]);
   return adminOverview(body);
 }
+async function adminDeleteSurvey(body) {
+  requireAdmin(body);
+  const code = normalizeCode(body.participantCode);
+  const [participant, surveyResult] = await Promise.all([
+    readParticipant(code),
+    /^[A-Z0-9-]{3,24}$/.test(code) ? db.collection(SURVEYS).doc(code).get() : Promise.resolve({ data: [] }),
+  ]);
+  if (!participant) throw Object.assign(new Error("参与编号不存在。"), { statusCode: 404, code: "PARTICIPANT_NOT_FOUND" });
+  if (!surveyResult.data?.[0]) throw Object.assign(new Error("这个编号没有可删除的结营问卷。"), { statusCode: 404, code: "SURVEY_NOT_FOUND" });
+  await Promise.all([
+    db.collection(SURVEYS).doc(code).remove(),
+    db.collection(PARTICIPANTS).doc(code).update({ surveySubmittedAt: null, updatedAt: now() }),
+  ]);
+  return adminOverview(body);
+}
 async function adminDeleteParticipant(body) {
   requireAdmin(body);
   const code = normalizeCode(body.participantCode);
@@ -248,6 +263,7 @@ const actions = {
   "admin.addCode": adminAddCode,
   "admin.updateParticipant": adminUpdateParticipant,
   "admin.resetParticipant": adminResetParticipant,
+  "admin.deleteSurvey": adminDeleteSurvey,
   "admin.deleteParticipant": adminDeleteParticipant,
   "admin.deleteParticipants": adminDeleteParticipants,
 };
